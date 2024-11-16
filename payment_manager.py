@@ -23,7 +23,7 @@ class PaymentManager:
         db.session.commit()
 
         result = self.sdk.create_order(
-            telegram_id=telegram_id,
+            customer_mobile=telegram_id,  # Updated parameter name
             user_token="05851bd38cb8872279f355c404a8863f",  # Updated user token
             amount=str(amount),
             order_id=order_id,

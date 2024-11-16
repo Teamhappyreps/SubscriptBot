@@ -10,12 +10,12 @@ logger = logging.getLogger(__name__)
 
 class KhilaadiXProSDK:
     def __init__(self):
-        self.base_url = "https://liveipl.live"  # Removed /api/ as it's included in endpoint
+        self.base_url = "https://liveipl.live"
     
-    def create_order(self, telegram_id, user_token, amount, order_id, redirect_url, remark1, remark2):
-        endpoint = f"{self.base_url}/api/create-order"  # Added /api/ to endpoint
+    def create_order(self, customer_mobile, user_token, amount, order_id, redirect_url, remark1, remark2):
+        endpoint = f"{self.base_url}/api/create-order"
         payload = {
-            "customer_id": str(telegram_id),  # Ensure telegram_id is string
+            "customer_mobile": str(customer_mobile),
             "user_token": str(user_token),
             "amount": str(amount),
             "order_id": str(order_id),
@@ -25,14 +25,13 @@ class KhilaadiXProSDK:
         }
         
         headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
         
         logger.info(f"Creating order with payload: {payload}")
         
         try:
-            response = requests.post(endpoint, json=payload, headers=headers)
+            response = requests.post(endpoint, data=payload, headers=headers)
             response.encoding = 'utf-8'  # Set encoding explicitly
             logger.info(f"API Response Status: {response.status_code}")
             logger.info(f"API Response Content: {response.text}")  # Log raw response
