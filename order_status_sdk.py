@@ -1,4 +1,12 @@
 import requests
+import logging
+
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 class OrderStatusSDK:
     def __init__(self, base_url):
@@ -15,8 +23,14 @@ class OrderStatusSDK:
         }
 
         try:
+            logger.info(f"Request URL: {url}")
+            logger.info(f"Request payload: {payload}")
+            
             response = requests.post(url, data=payload, headers=headers)
             response.encoding = 'utf-8'
+            
+            logger.info(f"Response status code: {response.status_code}")
+            logger.info(f"Response content: {response.text}")
             
             if response.status_code == 200:
                 response_data = response.json()
@@ -28,16 +42,17 @@ class OrderStatusSDK:
                     }
                 return response_data
             else:
-                return {"status": "ERROR", "message": "API request failed"}
+                return {"status": "ERROR", "message": f"API request failed with status code: {response.status_code}"}
                 
         except Exception as e:
-            return {"status": "ERROR", "message": str(e)}
+            logger.error(f"Request failed: {str(e)}")
+            return {"status": "ERROR", "message": f"Request failed: {str(e)}"}
 
 if __name__ == "__main__":
-    base_url = "https://khilaadixpro.shop"
+    base_url = "https://liveipl.live"
     sdk = OrderStatusSDK(base_url)
-    user_token = "05851bd38cb8872279f355c404a8863f"  # Updated token
+    user_token = "05851bd38cb8872279f355c404a8863f"
     order_id = "8052313697"
 
     result = sdk.check_order_status(user_token, order_id)
-    print(result)
+    logger.info(f"Final result: {result}")
