@@ -135,6 +135,15 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         mobile_number = update.message.text.strip()
+        
+        # Check for empty mobile number
+        if not mobile_number:
+            logger.warning("Empty mobile number received")
+            await update.message.reply_text(
+                "⚠️ Mobile number is required for payment processing. Please enter a valid 10-digit Indian mobile number starting with 6-9."
+            )
+            return
+            
         pending_plan = context.user_data.get('pending_plan')
         
         if not pending_plan:
@@ -148,8 +157,7 @@ async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not re.match(r'^[6-9]\d{9}$', mobile_number):
             logger.warning(f"Invalid mobile number format: {mobile_number}")
             await update.message.reply_text(
-                "❌ Invalid mobile number format!\n"
-                "Please enter a valid 10-digit Indian mobile number starting with 6-9."
+                "⚠️ Mobile number is required for payment processing. Please enter a valid 10-digit Indian mobile number starting with 6-9."
             )
             return
 
