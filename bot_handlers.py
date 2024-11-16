@@ -52,7 +52,7 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📦 {plan['name']}\n"
                 f"💰 Price: ₹{plan['price']}\n"
                 f"⏳ Duration: {plan['duration_days']} days\n"
-                f"📺 Channels: {', '.join(plan.get('channels', [plan['channel_id']]))})\n\n"
+                f"📺 Channels: {', '.join(plan.get('channels', [plan.get('channel_id', 'Unknown')]))}\n\n"
             )
             plans_message += plan_info
             
