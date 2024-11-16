@@ -228,9 +228,15 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
                         break
 
                 await query.message.reply_text(
-                    "✅ Payment Successful!\n"
-                    "Your subscription has been activated.\n"
-                    "You will receive channel invite links shortly."
+                    f"✅ Payment Successful!\n\n"
+                    f"🔖 Order ID: {order_id}\n"
+                    f"💰 Amount: ₹{status['result']['amount']}\n"
+                    f"📅 Transaction Date: {status['result']['date']}\n"
+                    f"📝 UTR Number: {status['result']['utr']}\n\n"
+                    f"🎉 Your subscription has been activated!\n"
+                    f"📱 Channel invite links will be sent shortly.\n\n"
+                    f"❗ Note: Save this message for future reference.\n"
+                    f"For support, use /start command."
                 )
             else:
                 await query.message.reply_text(
