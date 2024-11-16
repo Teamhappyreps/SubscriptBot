@@ -9,6 +9,7 @@ from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from datetime import datetime
 import asyncio
 import threading
+from sqlalchemy import exc
 
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 payment_manager = PaymentManager()
@@ -19,69 +20,94 @@ def index():
 
 @app.route('/payment/callback', methods=['POST'])
 def payment_callback():
-    order_id = request.form.get('order_id')
-    status = request.form.get('status')
-    
-    if not order_id:
-        return jsonify({'status': 'error', 'message': 'Missing order_id'}), 400
+    try:
+        order_id = request.form.get('order_id')
+        status = request.form.get('status')
+        
+        if not order_id:
+            return jsonify({'status': 'error', 'message': 'Missing order_id'}), 400
 
-    payment = Payment.query.filter_by(order_id=order_id).first()
-    if not payment:
-        return jsonify({'status': 'error', 'message': 'Invalid order_id'}), 404
+        # Start database transaction
+        db.session.begin_nested()
+        
+        payment = Payment.query.filter_by(order_id=order_id).first()
+        if not payment:
+            db.session.rollback()
+            return jsonify({'status': 'error', 'message': 'Invalid order_id'}), 404
 
-    # Verify payment status
-    payment_status = payment_manager.check_payment_status(order_id)
-    
-    if payment_status.get('status') == 'SUCCESS':
-        payment.status = 'SUCCESS'
-        db.session.commit()
+        # Verify payment status
+        payment_status = payment_manager.check_payment_status(order_id)
+        
+        if payment_status.get('status') == 'SUCCESS':
+            payment.status = 'SUCCESS'
+            db.session.commit()
 
-        # Create subscription for user
-        user = User.query.get(payment.user_id)
-        if user:
-            # Find subscription details from payment amount
-            for plan_id, plan in SUBSCRIPTION_PLANS.items():
-                if plan['price'] == payment.amount:
-                    subscription = SubscriptionManager.create_subscription(user.id, plan_id)
-                    
-                    # Send confirmation message
-                    try:
-                        message = (
-                            f"🎉 Payment Successful!\n\n"
-                            f"Order ID: {order_id}\n"
-                            f"Amount: ₹{payment.amount}\n"
-                            f"Subscription: {plan['name']}\n"
-                            f"Valid until: {subscription.end_date.strftime('%Y-%m-%d')}"
-                        )
-                        bot.send_message(chat_id=user.telegram_id, text=message)
-                        
-                        # Add user to channel(s)
-                        if 'channels' in plan:
-                            channels = plan['channels']
-                        else:
-                            channels = [plan['channel_id']]
+            # Create subscription for user
+            user = User.query.get(payment.user_id)
+            if user:
+                try:
+                    # Find subscription details from payment amount
+                    for plan_id, plan in SUBSCRIPTION_PLANS.items():
+                        if plan['price'] == payment.amount:
+                            subscription = SubscriptionManager.create_subscription(user.id, plan_id)
                             
-                        for channel in channels:
-                            try:
-                                invite_link = bot.create_chat_invite_link(
-                                    chat_id=channel,
-                                    member_limit=1,
-                                    expire_date=subscription.end_date
-                                )
-                                bot.send_message(
-                                    chat_id=user.telegram_id,
-                                    text=f"Join your channel here: {invite_link.invite_link}"
-                                )
-                            except Exception as e:
-                                print(f"Error creating invite link: {e}")
-                                
-                    except telegram.error.TelegramError as e:
-                        print(f"Error sending confirmation: {e}")
-                    break
+                            # Create event loop for async operations
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            
+                            async def send_confirmation():
+                                try:
+                                    message = (
+                                        f"🎉 Payment Successful!\n\n"
+                                        f"Order ID: {order_id}\n"
+                                        f"Amount: ₹{payment.amount}\n"
+                                        f"Subscription: {plan['name']}\n"
+                                        f"Valid until: {subscription.end_date.strftime('%Y-%m-%d')}"
+                                    )
+                                    await bot.send_message(chat_id=user.telegram_id, text=message)
+                                    
+                                    # Add user to channel(s)
+                                    channels = plan.get('channels', [plan['channel_id']])
+                                    
+                                    for channel in channels:
+                                        try:
+                                            invite_link = await bot.create_chat_invite_link(
+                                                chat_id=channel,
+                                                member_limit=1,
+                                                expire_date=subscription.end_date
+                                            )
+                                            await bot.send_message(
+                                                chat_id=user.telegram_id,
+                                                text=f"Join your channel here: {invite_link.invite_link}"
+                                            )
+                                        except telegram.error.TelegramError as e:
+                                            print(f"Error creating invite link for channel {channel}: {e}")
+                                            continue
+                                            
+                                except telegram.error.TelegramError as e:
+                                    print(f"Error sending confirmation: {e}")
+                                    
+                            # Run async operations
+                            loop.run_until_complete(send_confirmation())
+                            loop.close()
+                            break
+                            
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"Error processing subscription: {e}")
+                    return jsonify({'status': 'error', 'message': 'Error processing subscription'}), 500
 
-        return jsonify({'status': 'success'})
-    
-    return jsonify({'status': 'pending'})
+            return jsonify({'status': 'success'})
+        
+        return jsonify({'status': 'pending'})
+        
+    except exc.SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"Database error: {e}")
+        return jsonify({'status': 'error', 'message': 'Database error'}), 500
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 def run_flask():
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
