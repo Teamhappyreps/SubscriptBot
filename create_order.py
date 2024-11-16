@@ -25,29 +25,37 @@ class KhilaadiXProSDK:
         }
         
         headers = {
-            'Content-Type': 'application/json',  # Changed to JSON content type
+            'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
         
         logger.info(f"Creating order with payload: {payload}")
         
         try:
-            response = requests.post(endpoint, json=payload, headers=headers)  # Using json parameter for JSON payload
+            response = requests.post(endpoint, json=payload, headers=headers)
+            response.encoding = 'utf-8'  # Set encoding explicitly
             logger.info(f"API Response Status: {response.status_code}")
+            logger.info(f"API Response Content: {response.text}")  # Log raw response
             
             try:
                 response_data = response.json()
                 logger.info(f"API Response Data: {response_data}")
                 
-                if response.status_code == 200:
-                    return response_data
+                if response_data.get('status') and response_data.get('result'):
+                    return {
+                        'status': True,
+                        'message': response_data.get('message', 'Order Created Successfully'),
+                        'payment_url': response_data['result']['payment_url'],
+                        'order_id': response_data['result']['orderId']
+                    }
                 else:
                     error_message = response_data.get('message', 'Unknown error')
                     logger.error(f"API Error: {error_message}")
-                    return {"status": False, "message": f"API Error: {error_message}"}
+                    return {"status": False, "message": error_message}
                     
             except ValueError as e:
                 logger.error(f"Error parsing JSON response: {str(e)}")
+                logger.error(f"Raw response content: {response.text}")
                 return {"status": False, "message": "Invalid JSON response from API"}
                 
         except requests.exceptions.RequestException as e:
