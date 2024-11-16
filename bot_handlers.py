@@ -57,7 +57,6 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             plans_message += plan_info
             
-            # Generate callback data with exact plan_id
             callback_data = f"subscribe_{plan_id}"
             logger.info(f"Generating callback data - Plan ID: {plan_id}, Full callback data: {callback_data}")
             
@@ -131,18 +130,24 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
             result, payment = payment_manager.create_payment(
                 user.id,
                 plan['price'],
-                update.effective_user.id  # Pass telegram_id directly
+                update.effective_user.id
             )
 
             if result.get('status'):
+                # Create keyboard with payment URL and status check button
+                keyboard = [
+                    [InlineKeyboardButton("Pay Now", url=result['payment_url'])],
+                    [InlineKeyboardButton("Check Payment Status", callback_data=f"check_status_{payment.order_id}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
                 await query.message.reply_text(
                     f"✅ Payment link created!\n\n"
                     f"Plan: {plan['name']}\n"
                     f"Amount: ₹{plan['price']}\n"
                     f"Duration: {plan['duration_days']} days\n\n"
-                    f"Please complete the payment using this link:\n"
-                    f"{result['payment_url']}\n\n"
-                    f"The link will expire in 30 minutes."
+                    f"Please click the Pay Now button below to complete your payment.",
+                    reply_markup=reply_markup
                 )
                 logger.info(f"Payment link created for user {user.id}, plan {plan_id}")
             else:
@@ -161,6 +166,23 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in handle_subscription: {str(e)}", exc_info=True)
         await query.answer("An error occurred. Please try again.")
 
+async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        query = update.callback_query
+        order_id = query.data.replace("check_status_", "")
+        logger.info(f"Checking payment status for order: {order_id}")
+        
+        payment_manager = PaymentManager()
+        status = payment_manager.check_payment_status(order_id)
+        
+        status_message = "Payment Successful! ✅" if status.get('status') == 'SUCCESS' else "Payment Pending ⏳"
+        await query.message.reply_text(status_message)
+        logger.info(f"Payment status for order {order_id}: {status.get('status')}")
+        
+    except Exception as e:
+        logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
+        await query.message.reply_text("Error checking payment status. Please try again.")
+
 def setup_bot():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
@@ -168,5 +190,6 @@ def setup_bot():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
     application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^subscribe_"))
+    application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_status_"))
     
     return application
