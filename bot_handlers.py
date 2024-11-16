@@ -5,14 +5,16 @@ from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from models import User, db
 from payment_manager import PaymentManager
 from subscription_manager import SubscriptionManager
+from app import app
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    db_user = User.query.filter_by(telegram_id=user.id).first()
-    if not db_user:
-        db_user = User(telegram_id=user.id, username=user.username)
-        db.session.add(db_user)
-        db.session.commit()
+    with app.app_context():
+        db_user = User.query.filter_by(telegram_id=user.id).first()
+        if not db_user:
+            db_user = User(telegram_id=user.id, username=user.username)
+            db.session.add(db_user)
+            db.session.commit()
 
     keyboard = [
         [InlineKeyboardButton("View Subscription Plans", callback_data="show_plans")],
@@ -67,14 +69,16 @@ async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     plan = SUBSCRIPTION_PLANS[plan_id]
-    user = User.query.filter_by(telegram_id=update.effective_user.id).first()
     
-    payment_manager = PaymentManager()
-    result, payment = payment_manager.create_payment(
-        user.id,
-        plan['price'],
-        mobile_number
-    )
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        
+        payment_manager = PaymentManager()
+        result, payment = payment_manager.create_payment(
+            user.id,
+            plan['price'],
+            mobile_number
+        )
 
     if result.get('status'):
         await update.message.reply_text(
