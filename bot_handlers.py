@@ -172,10 +172,12 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
         order_id = query.data.replace("check_status_", "")
         logger.info(f"Checking payment status for order: {order_id}")
         
-        payment_manager = PaymentManager()
-        status = payment_manager.check_payment_status(order_id)
-        
-        status_message = "Payment Successful! ✅" if status.get('status') == 'SUCCESS' else "Payment Pending ⏳"
+        with app.app_context():
+            payment_manager = PaymentManager()
+            status = payment_manager.check_payment_status(order_id)
+            
+            status_message = "Payment Successful! ✅" if status.get('status') == 'SUCCESS' else "Payment Pending ⏳"
+            
         await query.message.reply_text(status_message)
         logger.info(f"Payment status for order {order_id}: {status.get('status')}")
         
