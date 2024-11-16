@@ -2,7 +2,7 @@ from create_order import KhilaadiXProSDK
 from order_status_sdk import OrderStatusSDK
 import uuid
 from models import Payment, User, db
-from config import PAYMENT_BASE_URL, WEBHOOK_BASE_URL, SUBSCRIPTION_PLANS
+from config import PAYMENT_BASE_URL, WEBHOOK_BASE_URL, SUBSCRIPTION_PLANS, USER_TOKEN
 from subscription_manager import SubscriptionManager
 import logging
 
@@ -28,7 +28,7 @@ class PaymentManager:
 
         result = self.sdk.create_order(
             customer_mobile=telegram_id,
-            user_token="05851bd38cb8872279f355c404a8863f",
+            user_token=USER_TOKEN,
             amount=str(amount),
             order_id=order_id,
             redirect_url=redirect_url,
@@ -40,7 +40,7 @@ class PaymentManager:
 
     def check_payment_status(self, order_id):
         result = self.status_sdk.check_order_status(
-            user_token="05851bd38cb8872279f355c404a8863f",
+            user_token=USER_TOKEN,
             order_id=order_id
         )
         

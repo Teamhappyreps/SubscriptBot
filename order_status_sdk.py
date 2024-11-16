@@ -23,7 +23,7 @@ class OrderStatusSDK:
 if __name__ == "__main__":
     base_url = "https://khilaadixpro.shop"
     sdk = OrderStatusSDK(base_url)
-    user_token = "2048f66bef68633fa3262d7a398ab577"
+    user_token = "05851bd38cb8872279f355c404a8863f"  # Updated token
     order_id = "8052313697"
 
     result = sdk.check_order_status(user_token, order_id)
