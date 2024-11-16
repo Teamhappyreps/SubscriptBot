@@ -57,13 +57,10 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             plans_message += plan_info
             
-            callback_data = f"subscribe_{plan_id}"
-            logger.info(f"Generating callback data - Plan ID: {plan_id}, Full callback data: {callback_data}")
-            
             keyboard.append([
                 InlineKeyboardButton(
                     f"{plan['name']} - ₹{plan['price']} ({plan['duration_days']} days)",
-                    callback_data=callback_data
+                    callback_data=f"subscribe_{plan_id}"
                 )
             ])
             
@@ -176,9 +173,18 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
             payment_manager = PaymentManager()
             status = payment_manager.check_payment_status(order_id)
             
-            status_message = "Payment Successful! ✅" if status.get('status') == 'SUCCESS' else "Payment Pending ⏳"
+            if status.get('status') == 'SUCCESS':
+                await query.message.reply_text(
+                    "✅ Payment Successful!\n"
+                    "Your subscription has been activated.\n"
+                    "You will receive channel invite links shortly."
+                )
+            else:
+                await query.message.reply_text(
+                    "⏳ Payment Pending\n"
+                    "Please complete the payment to activate your subscription."
+                )
             
-        await query.message.reply_text(status_message)
         logger.info(f"Payment status for order {order_id}: {status.get('status')}")
         
     except Exception as e:
