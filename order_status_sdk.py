@@ -7,16 +7,29 @@ class OrderStatusSDK:
     def check_order_status(self, user_token, order_id):
         url = f"{self.base_url}/api/check-order-status"
         payload = {
-            "user_token": user_token,
-            "order_id": order_id
+            "user_token": str(user_token),
+            "order_id": str(order_id)
+        }
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
 
         try:
-            response = requests.post(url, data=payload)
+            response = requests.post(url, data=payload, headers=headers)
+            response.encoding = 'utf-8'
+            
             if response.status_code == 200:
-                return response.json()
+                response_data = response.json()
+                if response_data.get('status') == 'COMPLETED':
+                    return {
+                        'status': 'SUCCESS',
+                        'message': response_data.get('message'),
+                        'result': response_data.get('result', {})
+                    }
+                return response_data
             else:
                 return {"status": "ERROR", "message": "API request failed"}
+                
         except Exception as e:
             return {"status": "ERROR", "message": str(e)}
 
