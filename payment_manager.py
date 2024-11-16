@@ -24,7 +24,7 @@ class PaymentManager:
 
         result = self.sdk.create_order(
             telegram_id=telegram_id,
-            user_token="e8d2a2f1ac98d41d3b7422fd11ab98fa",  # Use environment variable in production
+            user_token="05851bd38cb8872279f355c404a8863f",  # Updated user token
             amount=str(amount),
             order_id=order_id,
             redirect_url=redirect_url,
@@ -36,7 +36,7 @@ class PaymentManager:
 
     def check_payment_status(self, order_id):
         result = self.status_sdk.check_order_status(
-            user_token="2048f66bef68633fa3262d7a398ab577",  # Use environment variable in production
+            user_token="05851bd38cb8872279f355c404a8863f",  # Updated user token
             order_id=order_id
         )
         
