@@ -56,10 +56,13 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             plans_message += plan_info
             
+            callback_data = f"subscribe_{plan_id}"
+            logger.info(f"Generating callback_data for plan: {plan_id}, callback_data: {callback_data}")
+            
             keyboard.append([
                 InlineKeyboardButton(
                     f"{plan['name']} - ₹{plan['price']} ({plan['duration_days']} days)",
-                    callback_data=f"subscribe_{plan_id}"
+                    callback_data=callback_data
                 )
             ])
             
@@ -85,12 +88,16 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         plan_id = query.data.split('_')[1]
-        plan = SUBSCRIPTION_PLANS.get(plan_id)
+        logger.info(f"Received subscription request for plan_id: {plan_id}")
         
-        if not plan:
-            logger.error(f"Invalid plan selected: {plan_id}")
+        # Validate plan_id against SUBSCRIPTION_PLANS
+        if plan_id not in SUBSCRIPTION_PLANS:
+            logger.error(f"Invalid plan_id received: {plan_id}. Valid plans are: {list(SUBSCRIPTION_PLANS.keys())}")
             await query.answer("Invalid plan selected. Please choose a valid plan.")
             return
+            
+        plan = SUBSCRIPTION_PLANS[plan_id]
+        logger.info(f"Found valid plan: {plan['name']} for plan_id: {plan_id}")
 
         # Store plan details in context
         context.user_data['pending_plan'] = {
