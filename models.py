@@ -25,3 +25,12 @@ class Payment(db.Model):
     status = db.Column(db.String(20), nullable=False)
     subscription_id = db.Column(db.Integer, db.ForeignKey('subscription.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class InviteLink(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    channel_id = db.Column(db.String(100), nullable=False)
+    order_id = db.Column(db.String(50), nullable=False)
+    invite_link = db.Column(db.String(255), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

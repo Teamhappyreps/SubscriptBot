@@ -2,10 +2,11 @@ import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
-from models import User, db
+from models import User, Payment, InviteLink, db
 from payment_manager import PaymentManager
 from subscription_manager import SubscriptionManager
 from app import app
+from datetime import datetime, timedelta
 import re
 import logging
 
@@ -15,6 +16,45 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+async def generate_channel_invite(channel_id, user_telegram_id, order_id):
+    try:
+        with app.app_context():
+            user = User.query.filter_by(telegram_id=user_telegram_id).first()
+            if not user:
+                logger.error(f"User not found for telegram_id: {user_telegram_id}")
+                return None
+
+            # Create invite link with expiry
+            invite = await bot.create_chat_invite_link(
+                chat_id=channel_id,
+                member_limit=1,
+                expire_date=datetime.utcnow() + timedelta(days=1)  # 24-hour validity
+            )
+
+            # Store invite link in database
+            invite_link = InviteLink(
+                user_id=user.id,
+                channel_id=channel_id,
+                order_id=order_id,
+                invite_link=invite.invite_link,
+                expires_at=datetime.utcnow() + timedelta(days=1)
+            )
+            db.session.add(invite_link)
+            db.session.commit()
+
+            # Send invite link to user
+            await bot.send_message(
+                chat_id=user_telegram_id,
+                text=f"🎉 Here's your invite link for {channel_id}:\n{invite.invite_link}\n\n"
+                     f"⚠️ This link will expire in 24 hours. Please join the channel as soon as possible."
+            )
+            
+            return invite_link
+
+    except Exception as e:
+        logger.error(f"Error generating channel invite: {str(e)}")
+        return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -174,6 +214,19 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
             status = payment_manager.check_payment_status(order_id)
             
             if status.get('status') == 'SUCCESS':
+                # Get subscription plan details
+                payment = Payment.query.filter_by(order_id=order_id).first()
+                user = User.query.get(payment.user_id)
+                
+                # Find plan from payment amount
+                for plan_id, plan in SUBSCRIPTION_PLANS.items():
+                    if plan['price'] == payment.amount:
+                        channels = plan.get('channels', [plan['channel_id']])
+                        # Generate invite for each channel
+                        for channel in channels:
+                            await generate_channel_invite(channel, user.telegram_id, order_id)
+                        break
+
                 await query.message.reply_text(
                     "✅ Payment Successful!\n"
                     "Your subscription has been activated.\n"
