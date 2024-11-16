@@ -113,10 +113,72 @@ class SubscriptionManager:
         except Exception as e:
             print(f"Unexpected error in check_expired_subscriptions: {e}")
 
+    @staticmethod
+    def send_renewal_reminders():
+        try:
+            with app.app_context():
+                # Get subscriptions expiring in the next 7 days
+                reminder_date = datetime.utcnow() + timedelta(days=7)
+                expiring_soon = Subscription.query.filter(
+                    Subscription.end_date <= reminder_date,
+                    Subscription.end_date > datetime.utcnow(),
+                    Subscription.active == True
+                ).all()
+
+                for sub in expiring_soon:
+                    try:
+                        user = User.query.get(sub.user_id)
+                        plan = SUBSCRIPTION_PLANS.get(sub.plan_id)
+                        
+                        if plan and user:
+                            days_left = (sub.end_date - datetime.utcnow()).days
+                            
+                            # Create event loop for async operations
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            
+                            async def send_reminder():
+                                try:
+                                    message = (
+                                        f"⚠️ Subscription Renewal Reminder ⚠️\n\n"
+                                        f"Your subscription to {plan['name']} will expire in {days_left} days.\n"
+                                        f"Subscription end date: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+                                        f"To continue enjoying our content, please renew your subscription.\n"
+                                        f"Use /start command to view available plans."
+                                    )
+                                    await bot.send_message(
+                                        chat_id=user.telegram_id,
+                                        text=message
+                                    )
+                                except telegram.error.TelegramError as e:
+                                    print(f"Error sending renewal reminder: {e}")
+                            
+                            # Run async operations
+                            loop.run_until_complete(send_reminder())
+                            loop.close()
+                            
+                    except Exception as e:
+                        print(f"Error processing renewal reminder for subscription {sub.id}: {e}")
+
+        except exc.SQLAlchemyError as e:
+            print(f"Database error in send_renewal_reminders: {e}")
+        except Exception as e:
+            print(f"Unexpected error in send_renewal_reminders: {e}")
+
 def setup_subscription_checks(scheduler):
+    # Check for expired subscriptions every hour
     scheduler.add_job(
         SubscriptionManager.check_expired_subscriptions,
         'interval',
         hours=1,
         next_run_time=datetime.utcnow()  # Run immediately on startup
+    )
+    
+    # Send renewal reminders daily at 10:00 AM
+    scheduler.add_job(
+        SubscriptionManager.send_renewal_reminders,
+        'cron',
+        hour=10,
+        minute=0,
+        next_run_time=datetime.utcnow()  # Also run immediately on startup
     )
