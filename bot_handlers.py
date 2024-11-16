@@ -42,10 +42,11 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         plans_message = "Available Subscription Plans:\n\n"
         
+        logger.info("Starting to generate subscription plan buttons")
         for plan_id, plan in SUBSCRIPTION_PLANS.items():
             # Validate plan data
             if not all(key in plan for key in ['name', 'price', 'duration_days']):
-                logger.error(f"Invalid plan data for {plan_id}")
+                logger.error(f"Invalid plan data for {plan_id}: missing required fields")
                 continue
                 
             plan_info = (
@@ -56,8 +57,9 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             plans_message += plan_info
             
+            # Generate callback data with exact plan_id
             callback_data = f"subscribe_{plan_id}"
-            logger.info(f"Generating callback_data for plan: {plan_id}, callback_data: {callback_data}")
+            logger.info(f"Generating callback data - Plan ID: {plan_id}, Full callback data: {callback_data}")
             
             keyboard.append([
                 InlineKeyboardButton(
@@ -73,31 +75,41 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plans_message + "\nChoose a plan to subscribe:",
             reply_markup=reply_markup
         )
-        logger.info("Plans displayed successfully")
+        logger.info("Successfully displayed all subscription plans")
         
     except Exception as e:
-        logger.error(f"Error in show_plans: {e}")
+        logger.error(f"Error in show_plans: {str(e)}", exc_info=True)
         await update.callback_query.answer("Error displaying plans. Please try again.")
 
 async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
-        if not query.data or '_' not in query.data:
-            logger.error("Invalid callback data format")
+        
+        # Validate callback data format
+        if not query.data:
+            logger.error("Callback data is missing")
             await query.answer("Invalid selection. Please try again.")
             return
-
-        plan_id = query.data.split('_')[1]
-        logger.info(f"Received subscription request for plan_id: {plan_id}")
+            
+        logger.info(f"Received callback data: {query.data}")
+        
+        # Validate callback data format and extract plan_id
+        if not query.data.startswith("subscribe_"):
+            logger.error(f"Invalid callback data format: {query.data}. Expected format: subscribe_<plan_id>")
+            await query.answer("Invalid selection format. Please try again.")
+            return
+            
+        plan_id = query.data[len("subscribe_"):]  # Remove "subscribe_" prefix
+        logger.info(f"Extracted plan_id: {plan_id}")
         
         # Validate plan_id against SUBSCRIPTION_PLANS
         if plan_id not in SUBSCRIPTION_PLANS:
-            logger.error(f"Invalid plan_id received: {plan_id}. Valid plans are: {list(SUBSCRIPTION_PLANS.keys())}")
+            logger.error(f"Invalid plan_id: {plan_id}. Available plans: {list(SUBSCRIPTION_PLANS.keys())}")
             await query.answer("Invalid plan selected. Please choose a valid plan.")
             return
             
         plan = SUBSCRIPTION_PLANS[plan_id]
-        logger.info(f"Found valid plan: {plan['name']} for plan_id: {plan_id}")
+        logger.info(f"Found valid plan: {plan['name']} (ID: {plan_id})")
 
         # Store plan details in context
         context.user_data['pending_plan'] = {
@@ -114,10 +126,10 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Duration: {plan['duration_days']} days\n\n"
             "Note: Please enter a valid 10-digit Indian mobile number."
         )
-        logger.info(f"User {update.effective_user.id} initiated subscription for plan {plan_id}")
+        logger.info(f"User {update.effective_user.id} initiated subscription process for plan {plan_id}")
         
     except Exception as e:
-        logger.error(f"Error in handle_subscription: {e}")
+        logger.error(f"Error in handle_subscription: {str(e)}", exc_info=True)
         await query.answer("An error occurred. Please try again.")
 
 async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -180,7 +192,7 @@ async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         
     except Exception as e:
-        logger.error(f"Error in process_payment: {e}")
+        logger.error(f"Error in process_payment: {str(e)}", exc_info=True)
         await update.message.reply_text(
             "❌ An unexpected error occurred.\n"
             "Please try again or contact support."
