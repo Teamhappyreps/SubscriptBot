@@ -9,7 +9,7 @@ class PaymentManager:
         self.sdk = KhilaadiXProSDK()
         self.status_sdk = OrderStatusSDK(PAYMENT_BASE_URL)
 
-    def create_payment(self, user_id, amount, mobile_number):
+    def create_payment(self, user_id, amount, telegram_id):
         order_id = str(uuid.uuid4().int)[:10]
         redirect_url = f"{WEBHOOK_BASE_URL}/payment/callback"
         
@@ -23,7 +23,7 @@ class PaymentManager:
         db.session.commit()
 
         result = self.sdk.create_order(
-            customer_mobile=mobile_number,
+            telegram_id=telegram_id,
             user_token="e8d2a2f1ac98d41d3b7422fd11ab98fa",  # Use environment variable in production
             amount=str(amount),
             order_id=order_id,
