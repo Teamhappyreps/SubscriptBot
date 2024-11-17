@@ -82,8 +82,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "Welcome to the Channel Subscription Bot!\n"
-        "Choose an option below:",
+        "🎉 Welcome to Premium Services!\n\n"
+        "Choose an option below to get started:\n"
+        "• View our subscription plans\n"
+        "• Check your active subscriptions\n\n"
+        "❓ Need help? Contact @happy69now",
         reply_markup=reply_markup
     )
 
