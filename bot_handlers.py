@@ -267,9 +267,21 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
 
                 if matching_plan:
                     # Get channels list properly
-                    channels = matching_plan.get('channels', [matching_plan.get('channel_id')])
-                    if not isinstance(channels, list):
-                        channels = [channels]
+                    channels = []
+                    if 'channels' in matching_plan:
+                        channels = matching_plan['channels']
+                    elif 'channel_id' in matching_plan:
+                        channels = [matching_plan['channel_id']]
+                    else:
+                        logger.error(f"No channel information found in plan: {matching_plan}")
+                        await query.message.reply_text("Error: Invalid plan configuration.")
+                        return
+
+                    # Validate channels list
+                    if not channels:
+                        logger.error("Empty channels list")
+                        await query.message.reply_text("Error: No channels configured for this plan.")
+                        return
 
                     # Track successful and failed invites
                     success_count = 0
@@ -277,14 +289,18 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
 
                     # Generate invite for each channel
                     for channel in channels:
-                        if channel:  # Ensure channel ID is not None
+                        logger.info(f"Attempting to generate invite for channel: {channel}")
+                        try:
                             invite_result = await generate_channel_invite(channel, user.telegram_id, order_id)
                             if invite_result:
                                 success_count += 1
+                                logger.info(f"Successfully generated invite for channel {channel}")
                             else:
                                 failed_channels.append(channel)
-                        else:
-                            logger.error("Encountered None channel ID")
+                                logger.error(f"Failed to generate invite for channel {channel}")
+                        except Exception as e:
+                            failed_channels.append(channel)
+                            logger.error(f"Exception while generating invite for channel {channel}: {str(e)}")
 
                     # Prepare status message
                     status_message = (
@@ -299,7 +315,10 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
                         status_message += f"✅ Successfully generated {success_count} channel invite{'s' if success_count > 1 else ''}.\n"
                     
                     if failed_channels:
-                        status_message += f"⚠️ Failed to generate invites for {len(failed_channels)} channel{'s' if len(failed_channels) > 1 else ''}.\n"
+                        status_message += (
+                            f"⚠️ Failed to generate invites for {len(failed_channels)} channel{'s' if len(failed_channels) > 1 else ''}.\n"
+                            f"Please contact @happy69now for assistance."
+                        )
                         logger.error(f"Failed to generate invites for channels: {failed_channels}")
 
                     status_message += (
@@ -317,7 +336,7 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
                     "Please complete the payment to activate your subscription."
                 )
             
-        logger.info(f"Payment status check completed for order {order_id}: {status.get('status')}")
+            logger.info(f"Payment status check completed for order {order_id}: {status.get('status')}")
         
     except Exception as e:
         logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
