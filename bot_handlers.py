@@ -2,7 +2,7 @@ import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
-from models import User, Payment, InviteLink, db
+from models import User, Payment, InviteLink, db, Subscription
 from payment_manager import PaymentManager
 from subscription_manager import SubscriptionManager
 from app import app
@@ -33,12 +33,37 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 logger.error(f"User not found for telegram_id: {user_telegram_id}")
                 return None
 
+            # Get active subscription
+            subscription = Subscription.query.filter_by(
+                user_id=user.id,
+                active=True
+            ).order_by(Subscription.end_date.desc()).first()
+
+            if not subscription:
+                logger.error(f"No active subscription found for user {user.id}")
+                return None
+
             bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
             
             # Validate channel ID before proceeding
             if not await validate_channel_id(bot, channel_id):
                 logger.error(f"Invalid channel ID or bot not admin: {channel_id}")
                 return None
+
+            # Get plan details from channel_id
+            plan_name = None
+            for plan_id, plan in SUBSCRIPTION_PLANS.items():
+                if channel_id in plan.get('channels', [plan.get('channel_id')]):
+                    plan_name = plan['name']
+                    break
+
+            # Get channel name
+            try:
+                chat = await bot.get_chat(channel_id)
+                channel_name = chat.title
+            except telegram.error.TelegramError as e:
+                logger.error(f"Error getting channel name for {channel_id}: {str(e)}")
+                channel_name = "Premium Channel"
 
             # Create invite link with expiry
             invite = await bot.create_chat_invite_link(
@@ -64,8 +89,11 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 await bot.send_message(
                     chat_id=user_telegram_id,
                     text=f"🎉 Channel Access Granted!\n\n"
-                         f"🔗 Join Channel: {invite.invite_link}\n\n"
-                         f"⚠️ This invite link expires in 24 hours\n\n"
+                         f"📺 Channel: {channel_name}\n"
+                         f"📦 Plan: {plan_name}\n"
+                         f"🔗 Join Channel: {invite.invite_link}\n"
+                         f"⏳ Link expires in 24 hours\n"
+                         f"📅 Plan valid until: {subscription.end_date.strftime('%Y-%m-%d')}\n\n"
                          f"❓ Need help? Contact @happy69now"
                 )
             else:
