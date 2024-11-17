@@ -17,6 +17,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def validate_channel_id(bot: telegram.Bot, channel_id: str) -> bool:
+    try:
+        await bot.get_chat(channel_id)
+        return True
+    except telegram.error.TelegramError as e:
+        logger.error(f"Error validating channel {channel_id}: {str(e)}")
+        return False
+
 async def generate_channel_invite(channel_id, user_telegram_id, order_id):
     try:
         with app.app_context():
@@ -25,8 +33,14 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 logger.error(f"User not found for telegram_id: {user_telegram_id}")
                 return None
 
-            # Create invite link with expiry
             bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+            
+            # Validate channel ID before proceeding
+            if not await validate_channel_id(bot, channel_id):
+                logger.error(f"Invalid channel ID or bot not admin: {channel_id}")
+                return None
+
+            # Create invite link with expiry
             invite = await bot.create_chat_invite_link(
                 chat_id=channel_id,
                 member_limit=1,
@@ -44,6 +58,7 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 )
                 db.session.add(invite_link)
                 db.session.commit()
+                logger.info(f"Created invite link for channel {channel_id} for user {user_telegram_id}")
 
                 # Send invite link to user with updated message
                 await bot.send_message(
@@ -54,7 +69,7 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                          f"❓ Need help? Contact @happy69now"
                 )
             else:
-                logger.error("Failed to create invite link")
+                logger.error(f"Failed to create invite link for channel {channel_id}")
                 return None
             
             return invite_link
@@ -103,7 +118,8 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
                 
             # Calculate number of channels
-            num_channels = len(plan.get('channels', [plan.get('channel_id', 'Unknown')]))
+            channels = plan.get('channels', [plan.get('channel_id')])
+            num_channels = len(channels) if isinstance(channels, list) else 1
             
             plan_info = (
                 f"📦 {plan['name']}\n"
@@ -147,7 +163,7 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Validate callback data format and extract plan_id
         if not query.data.startswith("subscribe_"):
-            logger.error(f"Invalid callback data format: {query.data}. Expected format: subscribe_<plan_id>")
+            logger.error(f"Invalid callback data format: {query.data}")
             await query.answer("Invalid selection format. Please try again.")
             return
             
@@ -156,7 +172,7 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Validate plan_id against SUBSCRIPTION_PLANS
         if plan_id not in SUBSCRIPTION_PLANS:
-            logger.error(f"Invalid plan_id: {plan_id}. Available plans: {list(SUBSCRIPTION_PLANS.keys())}")
+            logger.error(f"Invalid plan_id: {plan_id}")
             await query.answer("Invalid plan selected. Please choose a valid plan.")
             return
             
@@ -171,7 +187,7 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
             'duration': plan['duration_days']
         }
         
-        # Proceed directly with payment creation
+        # Proceed with payment creation
         with app.app_context():
             user = User.query.filter_by(telegram_id=update.effective_user.id).first()
             if not user:
@@ -187,7 +203,6 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
 
             if result.get('status'):
-                # Create keyboard with payment URL and status check button
                 keyboard = [
                     [InlineKeyboardButton("Pay Now", url=result['payment_url'])],
                     [InlineKeyboardButton("Check Payment Status", callback_data=f"check_status_{payment.order_id}")]
@@ -232,34 +247,77 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
             if status.get('status') == 'SUCCESS':
                 # Get subscription plan details
                 payment = Payment.query.filter_by(order_id=order_id).first()
+                if not payment:
+                    logger.error(f"Payment not found for order_id: {order_id}")
+                    await query.message.reply_text("Error: Payment details not found.")
+                    return
+
                 user = User.query.get(payment.user_id)
-                
+                if not user:
+                    logger.error(f"User not found for payment: {payment.id}")
+                    await query.message.reply_text("Error: User details not found.")
+                    return
+
                 # Find plan from payment amount
+                matching_plan = None
                 for plan_id, plan in SUBSCRIPTION_PLANS.items():
                     if plan['price'] == payment.amount:
-                        channels = plan.get('channels', [plan['channel_id']])
-                        # Generate invite for each channel
-                        for channel in channels:
-                            await generate_channel_invite(channel, user.telegram_id, order_id)
+                        matching_plan = plan
                         break
 
-                await query.message.reply_text(
-                    f"✅ Payment Successful!\n\n"
-                    f"🔖 Order ID: {order_id}\n"
-                    f"💰 Amount: ₹{status['result']['amount']}\n"
-                    f"📅 Transaction Date: {status['result']['date']}\n\n"
-                    f"🎉 Your subscription has been activated!\n"
-                    f"📱 Channel invite links will be sent shortly.\n\n"
-                    f"❓ Need help? Contact @happy69now\n"
-                    f"❗ Note: Save this message for future reference."
-                )
+                if matching_plan:
+                    # Get channels list properly
+                    channels = matching_plan.get('channels', [matching_plan.get('channel_id')])
+                    if not isinstance(channels, list):
+                        channels = [channels]
+
+                    # Track successful and failed invites
+                    success_count = 0
+                    failed_channels = []
+
+                    # Generate invite for each channel
+                    for channel in channels:
+                        if channel:  # Ensure channel ID is not None
+                            invite_result = await generate_channel_invite(channel, user.telegram_id, order_id)
+                            if invite_result:
+                                success_count += 1
+                            else:
+                                failed_channels.append(channel)
+                        else:
+                            logger.error("Encountered None channel ID")
+
+                    # Prepare status message
+                    status_message = (
+                        f"✅ Payment Successful!\n\n"
+                        f"🔖 Order ID: {order_id}\n"
+                        f"💰 Amount: ₹{status['result']['amount']}\n"
+                        f"📅 Transaction Date: {status['result']['date']}\n\n"
+                        f"🎉 Your subscription has been activated!\n"
+                    )
+
+                    if success_count > 0:
+                        status_message += f"✅ Successfully generated {success_count} channel invite{'s' if success_count > 1 else ''}.\n"
+                    
+                    if failed_channels:
+                        status_message += f"⚠️ Failed to generate invites for {len(failed_channels)} channel{'s' if len(failed_channels) > 1 else ''}.\n"
+                        logger.error(f"Failed to generate invites for channels: {failed_channels}")
+
+                    status_message += (
+                        f"\n❓ Need help? Contact @happy69now\n"
+                        f"❗ Note: Save this message for future reference."
+                    )
+
+                    await query.message.reply_text(status_message)
+                else:
+                    logger.error(f"No matching plan found for amount: {payment.amount}")
+                    await query.message.reply_text("Error: Could not find matching subscription plan.")
             else:
                 await query.message.reply_text(
                     "⏳ Payment Pending\n"
                     "Please complete the payment to activate your subscription."
                 )
             
-        logger.info(f"Payment status for order {order_id}: {status.get('status')}")
+        logger.info(f"Payment status check completed for order {order_id}: {status.get('status')}")
         
     except Exception as e:
         logger.error(f"Error checking payment status: {str(e)}", exc_info=True)

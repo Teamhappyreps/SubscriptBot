@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Successful</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .success-card {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        /* Animated Checkmark Styles */
+        .checkmark-circle {
+            width: 80px;
+            height: 80px;
+            position: relative;
+            display: inline-block;
+            margin: 20px auto;
+        }
+
+        .checkmark-circle__circle {
+            width: 80px;
+            height: 80px;
+            position: absolute;
+            border-radius: 50%;
+            background-color: #4CAF50;
+            z-index: 1;
+            animation: scale-in 0.3s ease-out;
+        }
+
+        .checkmark-circle__check {
+            width: 40px;
+            height: 24px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            transform-origin: 50% 50%;
+        }
+
+        .checkmark-circle__check:before,
+        .checkmark-circle__check:after {
+            content: '';
+            position: absolute;
+            background-color: white;
+            border-radius: 4px;
+        }
+
+        .checkmark-circle__check:before {
+            width: 4px;
+            height: 24px;
+            left: 20px;
+            animation: check-before 0.3s ease-out 0.3s forwards;
+            opacity: 0;
+        }
+
+        .checkmark-circle__check:after {
+            width: 40px;
+            height: 4px;
+            bottom: 0;
+            animation: check-after 0.3s ease-out 0.5s forwards;
+            opacity: 0;
+        }
+
+        @keyframes scale-in {
+            from { transform: scale(0); }
+            to { transform: scale(1); }
+        }
+
+        @keyframes check-before {
+            from { opacity: 0; height: 0; }
+            to { opacity: 1; height: 24px; }
+        }
+
+        @keyframes check-after {
+            from { opacity: 0; width: 0; }
+            to { opacity: 1; width: 40px; }
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+
+        .order-details {
+            margin: 25px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            text-align: left;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .detail-label {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .telegram-button {
+            background-color: #0088cc;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 20px;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .telegram-button:hover {
+            background-color: #006699;
+            transform: translateY(-2px);
+        }
+
+        .message {
+            color: #666;
+            font-size: 14px;
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+
+        .redirect-message {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #888;
+        }
+
+        #countdown {
+            font-weight: bold;
+            color: #0088cc;
+        }
+
+        @media (max-width: 480px) {
+            .success-card {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 20px;
+            }
+
+            .checkmark-circle {
+                width: 60px;
+                height: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="success-card">
+        <!-- Animated Checkmark -->
+        <div class="checkmark-circle">
+            <div class="checkmark-circle__circle"></div>
+            <div class="checkmark-circle__check"></div>
+        </div>
+
+        <h1>Payment Successful!</h1>
+        <p class="message">Thank you for your purchase. Your subscription has been activated.</p>
+
+        <div class="order-details">
+            <div class="detail-row">
+                <span class="detail-label">Order ID:</span>
+                <span id="orderId">{{order_id}}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Amount Paid:</span>
+                <span id="amount">₹{{amount}}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Plan:</span>
+                <span id="plan">{{plan_name}}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Date:</span>
+                <span id="date">{{date}}</span>
+            </div>
+        </div>
+
+        <p class="message">
+            Please return to Telegram to access your subscription.<br>
+            Your invite links will be sent to you shortly.
+        </p>
+
+        <a href="https://t.me/demomanager_bot" class="telegram-button">
+            Return to Telegram
+        </a>
+
+        <p class="redirect-message">
+            Redirecting to Telegram in <span id="countdown">5</span> seconds...
+        </p>
+    </div>
+
+    <script>
+        // Countdown timer and redirect
+        let timeLeft = 5;
+        const countdownElement = document.getElementById('countdown');
+
+        const countdownTimer = setInterval(() => {
+            timeLeft--;
+            countdownElement.textContent = timeLeft;
+
+            if (timeLeft <= 0) {
+                clearInterval(countdownTimer);
+                window.location.href = "https://t.me/demomanager_bot";
+            }
+        }, 1000);
+
+        // Store transaction ID in local storage
+        localStorage.setItem('lastTransactionId', '{{order_id}}');
+    </script>
+</body>
+</html>

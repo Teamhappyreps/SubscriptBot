@@ -36,5 +36,5 @@ SUBSCRIPTION_PLANS = {
 
 # Payment Gateway Configuration
 PAYMENT_BASE_URL = "https://liveipl.live"
-WEBHOOK_BASE_URL = "https://your-domain.com"  # Replace with actual domain
+WEBHOOK_BASE_URL = "https://happy99now.replit.app"  # Replace with actual domain
 USER_TOKEN = "05851bd38cb8872279f355c404a8863f"
