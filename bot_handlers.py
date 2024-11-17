@@ -26,6 +26,7 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 return None
 
             # Create invite link with expiry
+            bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
             invite = await bot.create_chat_invite_link(
                 chat_id=channel_id,
                 member_limit=1,
@@ -33,27 +34,32 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
             )
 
             # Store invite link in database
-            invite_link = InviteLink(
-                user_id=user.id,
-                channel_id=channel_id,
-                order_id=order_id,
-                invite_link=invite.invite_link,
-                expires_at=datetime.utcnow() + timedelta(days=1)
-            )
-            db.session.add(invite_link)
-            db.session.commit()
+            if invite:
+                invite_link = InviteLink(
+                    user_id=user.id,
+                    channel_id=channel_id,
+                    order_id=order_id,
+                    invite_link=invite.invite_link,
+                    expires_at=datetime.utcnow() + timedelta(days=1)
+                )
+                db.session.add(invite_link)
+                db.session.commit()
 
-            # Send invite link to user
-            await bot.send_message(
-                chat_id=user_telegram_id,
-                text=f"🎉 Here's your invite link for {channel_id}:\n{invite.invite_link}\n\n"
-                     f"⚠️ This link will expire in 24 hours. Please join the channel as soon as possible."
-            )
+                # Send invite link to user
+                await bot.send_message(
+                    chat_id=user_telegram_id,
+                    text=f"🎉 Here's your invite link for {channel_id}:\n{invite.invite_link}\n\n"
+                         "⚠️ This link will expire in 24 hours. Please join the channel as soon as possible."
+                )
+            else:
+                logger.error("Failed to create invite link")
+                return None
             
             return invite_link
 
     except Exception as e:
         logger.error(f"Error generating channel invite: {str(e)}")
+        return None
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -231,12 +237,11 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
                     f"✅ Payment Successful!\n\n"
                     f"🔖 Order ID: {order_id}\n"
                     f"💰 Amount: ₹{status['result']['amount']}\n"
-                    f"📅 Transaction Date: {status['result']['date']}\n"
-                    f"📝 UTR Number: {status['result']['utr']}\n\n"
+                    f"📅 Transaction Date: {status['result']['date']}\n\n"
                     f"🎉 Your subscription has been activated!\n"
                     f"📱 Channel invite links will be sent shortly.\n\n"
-                    f"❗ Note: Save this message for future reference.\n"
-                    f"For support, use /start command."
+                    f"❓ Need help? Contact @happy69now\n"
+                    f"❗ Note: Save this message for future reference."
                 )
             else:
                 await query.message.reply_text(

@@ -12,25 +12,25 @@ SUBSCRIPTION_PLANS = {
         'name': 'Daily Desi Monthly',
         'price': 299,
         'duration_days': 30,
-        'channel_id': '@daily_desi'  # Replace with actual channel ID
+        'channel_id': '-1002280414979'  # Replace with actual channel ID
     },
     'daily_desi_yearly': {
         'name': 'Daily Desi Yearly',
         'price': 999,
         'duration_days': 365,
-        'channel_id': '@daily_desi'
+        'channel_id': '-1002280414979'
     },
     'tamil_tango_monthly': {
         'name': 'Tamil Tango Monthly',
         'price': 299,
         'duration_days': 30,
-        'channel_id': '@tamil_tango'
+        'channel_id': '-1002294971726'
     },
     'all_access_yearly': {
         'name': 'All Access Bundle Yearly',
         'price': 1499,
         'duration_days': 365,
-        'channels': ['@daily_desi', '@tamil_tango']
+        'channels': ['-1002280414979', '-1002294971726']
     }
 }
 
