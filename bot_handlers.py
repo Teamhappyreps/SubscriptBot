@@ -45,11 +45,13 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 db.session.add(invite_link)
                 db.session.commit()
 
-                # Send invite link to user
+                # Send invite link to user with updated message
                 await bot.send_message(
                     chat_id=user_telegram_id,
-                    text=f"🎉 Here's your invite link for {channel_id}:\n{invite.invite_link}\n\n"
-                         "⚠️ This link will expire in 24 hours. Please join the channel as soon as possible."
+                    text=f"🎉 Channel Access Granted!\n\n"
+                         f"🔗 Join Channel: {invite.invite_link}\n\n"
+                         f"⚠️ This invite link expires in 24 hours\n\n"
+                         f"❓ Need help? Contact @happy69now"
                 )
             else:
                 logger.error("Failed to create invite link")
@@ -57,9 +59,11 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
             
             return invite_link
 
-    except Exception as e:
-        logger.error(f"Error generating channel invite: {str(e)}")
+    except telegram.error.TelegramError as e:
+        logger.error(f"Telegram API error while generating invite for channel {channel_id}: {str(e)}")
         return None
+    except Exception as e:
+        logger.error(f"Unexpected error generating invite for channel {channel_id}: {str(e)}")
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
