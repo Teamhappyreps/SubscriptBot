@@ -102,11 +102,14 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Invalid plan data for {plan_id}: missing required fields")
                 continue
                 
+            # Calculate number of channels
+            num_channels = len(plan.get('channels', [plan.get('channel_id', 'Unknown')]))
+            
             plan_info = (
                 f"📦 {plan['name']}\n"
                 f"💰 Price: ₹{plan['price']}\n"
                 f"⏳ Duration: {plan['duration_days']} days\n"
-                f"📺 Channels: {', '.join(plan.get('channels', [plan.get('channel_id', 'Unknown')]))}\n\n"
+                f"📺 Channels: {num_channels} Premium Channel{'s' if num_channels > 1 else ''}\n\n"
             )
             plans_message += plan_info
             
