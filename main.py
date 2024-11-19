@@ -55,27 +55,16 @@ def payment_callback():
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             
-                            async def send_confirmation():
+                            async def process_channels():
                                 try:
-                                    # Generate channel invites immediately after successful payment
                                     channels = plan.get('channels', [plan['channel_id']])
                                     for channel in channels:
-                                        try:
-                                            invite_link = await bot.create_chat_invite_link(
-                                                chat_id=channel,
-                                                member_limit=1,
-                                                expire_date=subscription.end_date
-                                            )
-                                            await generate_channel_invite(channel, user.telegram_id, order_id)
-                                        except telegram.error.TelegramError as e:
-                                            print(f"Error creating invite link for channel {channel}: {e}")
-                                            continue
-                                            
+                                        await generate_channel_invite(channel, user.telegram_id, order_id)
                                 except telegram.error.TelegramError as e:
-                                    print(f"Error sending confirmation: {e}")
-                                    
+                                    print(f"Error processing channels: {e}")
+                            
                             # Run async operations
-                            loop.run_until_complete(send_confirmation())
+                            loop.run_until_complete(process_channels())
                             loop.close()
                             break
                             
