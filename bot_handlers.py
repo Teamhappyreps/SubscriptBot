@@ -368,15 +368,117 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
         
     except Exception as e:
         logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
-        await query.message.reply_text("Error checking payment status. Please try again.")
+        await query.answer("An error occurred while checking payment status.")
+
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if user is admin
+    admin_ids = [123456789]  # Replace with actual admin IDs
+    if update.effective_user.id not in admin_ids:
+        await update.message.reply_text("⛔️ Access denied: Admin only command")
+        return
+
+    # Admin command options
+    keyboard = [
+        [InlineKeyboardButton("View All Users", callback_data="admin_users")],
+        [InlineKeyboardButton("View All Subscriptions", callback_data="admin_subs")],
+        [InlineKeyboardButton("View All Orders", callback_data="admin_orders")],
+        [InlineKeyboardButton("Generate Channel Stats", callback_data="admin_stats")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "👑 Admin Control Panel\n\n"
+        "Select an option:",
+        reply_markup=reply_markup
+    )
+
+async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    # Verify admin
+    if query.from_user.id not in [123456789]:  # Replace with actual admin IDs
+        await query.answer("⛔️ Access denied")
+        return
+        
+    with app.app_context():
+        users = User.query.all()
+        message = "📊 Users Report\n\n"
+        for user in users:
+            message += f"ID: {user.telegram_id}\n"
+            message += f"Username: {user.username or 'N/A'}\n"
+            message += f"Joined: {user.created_at.strftime('%Y-%m-%d')}\n\n"
+        
+        await query.message.reply_text(message)
+
+async def admin_subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.from_user.id not in [123456789]:
+        await query.answer("⛔️ Access denied")
+        return
+        
+    with app.app_context():
+        subs = Subscription.query.filter_by(active=True).all()
+        message = "📊 Active Subscriptions\n\n"
+        for sub in subs:
+            user = User.query.get(sub.user_id)
+            message += f"User: {user.username or user.telegram_id}\n"
+            message += f"Plan: {sub.plan_id}\n"
+            message += f"Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+            
+        await query.message.reply_text(message)
+
+async def admin_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.from_user.id not in [123456789]:
+        await query.answer("⛔️ Access denied")
+        return
+        
+    with app.app_context():
+        payments = Payment.query.order_by(Payment.created_at.desc()).limit(10).all()
+        message = "📊 Recent Orders\n\n"
+        for payment in payments:
+            user = User.query.get(payment.user_id)
+            message += f"Order ID: {payment.order_id}\n"
+            message += f"User: {user.username or user.telegram_id}\n"
+            message += f"Amount: ₹{payment.amount}\n"
+            message += f"Status: {payment.status}\n"
+            message += f"Date: {payment.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            
+        await query.message.reply_text(message)
+
+async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.from_user.id not in [123456789]:
+        await query.answer("⛔️ Access denied")
+        return
+        
+    with app.app_context():
+        total_users = User.query.count()
+        active_subs = Subscription.query.filter_by(active=True).count()
+        total_revenue = db.session.query(db.func.sum(Payment.amount)).filter_by(status='SUCCESS').scalar() or 0
+        
+        message = "📊 Channel Statistics\n\n"
+        message += f"Total Users: {total_users}\n"
+        message += f"Active Subscriptions: {active_subs}\n"
+        message += f"Total Revenue: ₹{total_revenue:,.2f}\n"
+        
+        await query.message.reply_text(message)
 
 def setup_bot():
+    """Initialize and configure the bot with all handlers"""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # Add handlers
+    # Add command handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin))
+    
+    # Add callback query handlers
     application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
     application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^subscribe_"))
     application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_status_"))
+    
+    # Add admin callback handlers
+    application.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
+    application.add_handler(CallbackQueryHandler(admin_subs, pattern="^admin_subs$"))
+    application.add_handler(CallbackQueryHandler(admin_orders, pattern="^admin_orders$"))
+    application.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
     
     return application
