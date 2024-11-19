@@ -621,6 +621,79 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("An error occurred while checking payment status.")
 
 # Admin commands are updated to use /stats, /list_users, /revoke_sub, /grant_sub, /make_admin, and /remove_admin
+async def broadcast_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send broadcast message to all users"""
+    with app.app_context():
+        # Verify admin privileges
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+            
+        if not context.args:
+            await update.message.reply_text("Usage: /broadcast_all <message>")
+            return
+            
+        message = ' '.join(context.args)
+        users = User.query.all()
+        success = 0
+        failed = 0
+        
+        for user in users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=f"📢 Broadcast Message\n\n{message}"
+                )
+                success += 1
+            except Exception as e:
+                logger.error(f"Failed to send broadcast to {user.telegram_id}: {str(e)}")
+                failed += 1
+                
+        await update.message.reply_text(
+            f"✅ Broadcast complete!\n"
+            f"✓ Sent: {success}\n"
+            f"✗ Failed: {failed}"
+        )
+
+async def broadcast_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send broadcast message to users with active subscriptions"""
+    with app.app_context():
+        # Verify admin privileges
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+            
+        if not context.args:
+            await update.message.reply_text("Usage: /broadcast_active <message>")
+            return
+            
+        message = ' '.join(context.args)
+        active_subs = Subscription.query.filter_by(active=True).all()
+        user_ids = set(sub.user_id for sub in active_subs)
+        users = User.query.filter(User.id.in_(user_ids)).all()
+        
+        success = 0
+        failed = 0
+        
+        for user in users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=f"📢 Subscriber Message\n\n{message}"
+                )
+                success += 1
+            except Exception as e:
+                logger.error(f"Failed to send broadcast to {user.telegram_id}: {str(e)}")
+                failed += 1
+                
+        await update.message.reply_text(
+            f"✅ Broadcast to active subscribers complete!\n"
+            f"✓ Sent: {success}\n"
+            f"✗ Failed: {failed}"
+        )
+
 def setup_bot():
     """Initialize and configure the bot with handlers"""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -635,6 +708,8 @@ def setup_bot():
     application.add_handler(CommandHandler("grant_sub", admin_grant_sub))
     application.add_handler(CommandHandler("make_admin", admin_make_admin))
     application.add_handler(CommandHandler("remove_admin", admin_remove_admin))
+    application.add_handler(CommandHandler("broadcast_all", broadcast_all))
+    application.add_handler(CommandHandler("broadcast_active", broadcast_active))
     
     # Callback queries
     application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
