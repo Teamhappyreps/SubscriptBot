@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from app import app, db
-from bot_handlers import setup_bot, generate_channel_invite
+from bot_handlers import setup_bot
 from models import Payment, User, Subscription
 from subscription_manager import SubscriptionManager
 from payment_manager import PaymentManager
@@ -55,16 +55,40 @@ def payment_callback():
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             
-                            async def process_channels():
+                            async def send_confirmation():
                                 try:
+                                    message = (
+                                        f"🎉 Payment Successful!\n\n"
+                                        f"Order ID: {order_id}\n"
+                                        f"Amount: ₹{payment.amount}\n"
+                                        f"Subscription: {plan['name']}\n"
+                                        f"Valid until: {subscription.end_date.strftime('%Y-%m-%d')}"
+                                    )
+                                    await bot.send_message(chat_id=user.telegram_id, text=message)
+                                    
+                                    # Add user to channel(s)
                                     channels = plan.get('channels', [plan['channel_id']])
+                                    
                                     for channel in channels:
-                                        await generate_channel_invite(channel, user.telegram_id, order_id)
+                                        try:
+                                            invite_link = await bot.create_chat_invite_link(
+                                                chat_id=channel,
+                                                member_limit=1,
+                                                expire_date=subscription.end_date
+                                            )
+                                            await bot.send_message(
+                                                chat_id=user.telegram_id,
+                                                text=f"Join your channel here: {invite_link.invite_link}"
+                                            )
+                                        except telegram.error.TelegramError as e:
+                                            print(f"Error creating invite link for channel {channel}: {e}")
+                                            continue
+                                            
                                 except telegram.error.TelegramError as e:
-                                    print(f"Error processing channels: {e}")
-                            
+                                    print(f"Error sending confirmation: {e}")
+                                    
                             # Run async operations
-                            loop.run_until_complete(process_channels())
+                            loop.run_until_complete(send_confirmation())
                             loop.close()
                             break
                             
