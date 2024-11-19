@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from app import app, db
-from bot_handlers import setup_bot
+from bot_handlers import setup_bot, generate_channel_invite
 from models import Payment, User, Subscription
 from subscription_manager import SubscriptionManager
 from payment_manager import PaymentManager
@@ -57,18 +57,8 @@ def payment_callback():
                             
                             async def send_confirmation():
                                 try:
-                                    message = (
-                                        f"🎉 Payment Successful!\n\n"
-                                        f"Order ID: {order_id}\n"
-                                        f"Amount: ₹{payment.amount}\n"
-                                        f"Subscription: {plan['name']}\n"
-                                        f"Valid until: {subscription.end_date.strftime('%Y-%m-%d')}"
-                                    )
-                                    await bot.send_message(chat_id=user.telegram_id, text=message)
-                                    
-                                    # Add user to channel(s)
+                                    # Generate channel invites immediately after successful payment
                                     channels = plan.get('channels', [plan['channel_id']])
-                                    
                                     for channel in channels:
                                         try:
                                             invite_link = await bot.create_chat_invite_link(
@@ -76,10 +66,7 @@ def payment_callback():
                                                 member_limit=1,
                                                 expire_date=subscription.end_date
                                             )
-                                            await bot.send_message(
-                                                chat_id=user.telegram_id,
-                                                text=f"Join your channel here: {invite_link.invite_link}"
-                                            )
+                                            await generate_channel_invite(channel, user.telegram_id, order_id)
                                         except telegram.error.TelegramError as e:
                                             print(f"Error creating invite link for channel {channel}: {e}")
                                             continue

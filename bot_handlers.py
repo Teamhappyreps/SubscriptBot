@@ -316,7 +316,8 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                          f"📦 Plan: {plan_name}\n"
                          f"🔗 Join Channel: {invite.invite_link}\n"
                          f"⏳ Link expires in 24 hours\n"
-                         f"📅 Plan valid until: {subscription.end_date.strftime('%Y-%m-%d')}\n\n"
+                         f"📅 Plan valid until: {subscription.end_date.strftime('%Y-%m-%d')}\n"
+                         f"🔢 Order ID: {order_id}\n\n"
                          f"❓ Need help? Contact @happy69now"
                 )
             else:
