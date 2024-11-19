@@ -593,6 +593,57 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
         await query.answer("An error occurred while checking payment status.")
 
+async def my_subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=query.from_user.id).first()
+        if not user:
+            await query.answer("User not found!")
+            return
+            
+        active_subs = Subscription.query.filter_by(
+            user_id=user.id,
+            active=True
+        ).all()
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="start")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if not active_subs:
+            await query.edit_message_text(
+                "You don't have any active subscriptions.\n\n"
+                "❓ Need help? Contact @happy69now",
+                reply_markup=reply_markup
+            )
+            return
+            
+        message = "🎯 Your Active Subscriptions:\n\n"
+        for sub in active_subs:
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id)
+            if plan:
+                message += f"📦 Plan: {plan['name']}\n"
+                message += f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n"
+                message += f"✨ Status: Active\n\n"
+        
+        message += "❓ Need help? Contact @happy69now"
+        await query.edit_message_text(text=message, reply_markup=reply_markup)
+
+async def callback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("View Subscription Plans", callback_data="show_plans")],
+        [InlineKeyboardButton("My Subscriptions", callback_data="my_subs")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "🎉 Welcome to Premium Services!\n\n"
+        "Choose an option below to get started:\n"
+        "• View our subscription plans\n"
+        "• Check your active subscriptions\n\n"
+        "❓ Need help? Contact @happy69now",
+        reply_markup=reply_markup
+    )
+
 # Admin commands are updated to use /stats, /list_users, /revoke_sub, /grant_sub, /make_admin, and /remove_admin
 def setup_bot():
     """Initialize and configure the bot with handlers"""
@@ -611,6 +662,8 @@ def setup_bot():
     
     # Callback queries
     application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
+    application.add_handler(CallbackQueryHandler(my_subs, pattern="^my_subs$"))
+    application.add_handler(CallbackQueryHandler(callback_start, pattern="^start$"))
     application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^subscribe_"))
     application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_status_"))
 
