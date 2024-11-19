@@ -17,6 +17,229 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Admin command handlers
+async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show admin statistics about users and subscriptions"""
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        total_users = User.query.count()
+        active_subs = Subscription.query.filter_by(active=True).count()
+        total_payments = Payment.query.filter_by(status='SUCCESS').count()
+        
+        stats_message = (
+            "📊 System Statistics\n\n"
+            f"👥 Total Users: {total_users}\n"
+            f"✅ Active Subscriptions: {active_subs}\n"
+            f"💰 Successful Payments: {total_payments}\n"
+        )
+        await update.message.reply_text(stats_message)
+
+async def admin_list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List all users with their subscription status"""
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        users = User.query.all()
+        user_list = "👥 User List:\n\n"
+        
+        for u in users:
+            active_sub = Subscription.query.filter_by(user_id=u.id, active=True).first()
+            status = "✅ Active" if active_sub else "❌ No active subscription"
+            user_list += f"ID: {u.telegram_id}\nUsername: @{u.username}\nStatus: {status}\n\n"
+
+        # Split message if too long
+        if len(user_list) > 4096:
+            chunks = [user_list[i:i+4096] for i in range(0, len(user_list), 4096)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(user_list)
+
+async def admin_revoke_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Revoke a user's subscription"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            # Command format: /revoke_sub user_telegram_id
+            if len(context.args) < 1:
+                await update.message.reply_text("Usage: /revoke_sub <user_telegram_id>")
+                return
+
+            target_telegram_id = int(context.args[0])
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            active_sub = Subscription.query.filter_by(user_id=target_user.id, active=True).first()
+            if not active_sub:
+                await update.message.reply_text("❌ User has no active subscription.")
+                return
+
+            # Only super admin can revoke other admin's subscriptions
+            if target_user.is_admin and not admin.is_super_admin:
+                await update.message.reply_text("⚠️ Only super admin can revoke admin subscriptions.")
+                return
+
+            active_sub.active = False
+            db.session.commit()
+
+            # Remove from channels
+            plan = SUBSCRIPTION_PLANS.get(active_sub.plan_id)
+            if plan:
+                channels = plan.get('channels', [plan.get('channel_id')])
+                for channel in channels:
+                    await SubscriptionManager.remove_from_channel(target_telegram_id, channel)
+
+            await update.message.reply_text(f"✅ Successfully revoked subscription for user {target_telegram_id}")
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid user ID format.")
+        except Exception as e:
+            logger.error(f"Error in admin_revoke_sub: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while revoking the subscription.")
+
+async def admin_grant_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Grant a subscription to a user"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            # Command format: /grant_sub user_telegram_id plan_id duration_days
+            if len(context.args) < 3:
+                await update.message.reply_text("Usage: /grant_sub <user_telegram_id> <plan_id> <duration_days>")
+                return
+
+            target_telegram_id = int(context.args[0])
+            plan_id = context.args[1]
+            duration_days = int(context.args[2])
+
+            if plan_id not in SUBSCRIPTION_PLANS:
+                await update.message.reply_text("❌ Invalid plan ID.")
+                return
+
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            # Create new subscription
+            end_date = datetime.utcnow() + timedelta(days=duration_days)
+            subscription = Subscription(
+                user_id=target_user.id,
+                plan_id=plan_id,
+                end_date=end_date,
+                active=True
+            )
+            db.session.add(subscription)
+            db.session.commit()
+
+            # Generate invite links
+            plan = SUBSCRIPTION_PLANS[plan_id]
+            channels = plan.get('channels', [plan.get('channel_id')])
+            for channel in channels:
+                await generate_channel_invite(channel, target_telegram_id, f"admin_grant_{subscription.id}")
+
+            await update.message.reply_text(
+                f"✅ Successfully granted {plan['name']} subscription to user {target_telegram_id}\n"
+                f"Duration: {duration_days} days"
+            )
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number format.")
+        except Exception as e:
+            logger.error(f"Error in admin_grant_sub: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while granting the subscription.")
+
+async def admin_make_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Make a user an admin (super admin only)"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not admin.is_super_admin:
+            await update.message.reply_text("⚠️ This command is only available to super admin.")
+            return
+
+        try:
+            if len(context.args) < 1:
+                await update.message.reply_text("Usage: /make_admin <user_telegram_id>")
+                return
+
+            target_telegram_id = int(context.args[0])
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            if target_user.is_admin:
+                await update.message.reply_text("⚠️ User is already an admin.")
+                return
+
+            target_user.is_admin = True
+            db.session.commit()
+
+            await update.message.reply_text(f"✅ Successfully made user {target_telegram_id} an admin.")
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid user ID format.")
+        except Exception as e:
+            logger.error(f"Error in admin_make_admin: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while granting admin privileges.")
+
+async def admin_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove admin status from a user (super admin only)"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not admin.is_super_admin:
+            await update.message.reply_text("⚠️ This command is only available to super admin.")
+            return
+
+        try:
+            if len(context.args) < 1:
+                await update.message.reply_text("Usage: /remove_admin <user_telegram_id>")
+                return
+
+            target_telegram_id = int(context.args[0])
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            if not target_user.is_admin:
+                await update.message.reply_text("⚠️ User is not an admin.")
+                return
+
+            if target_user.is_super_admin:
+                await update.message.reply_text("⚠️ Cannot remove super admin status.")
+                return
+
+            target_user.is_admin = False
+            db.session.commit()
+
+            await update.message.reply_text(f"✅ Successfully removed admin status from user {target_telegram_id}.")
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid user ID format.")
+        except Exception as e:
+            logger.error(f"Error in admin_remove_admin: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while removing admin privileges.")
+
 async def validate_channel_id(bot: telegram.Bot, channel_id: str) -> bool:
     try:
         await bot.get_chat(channel_id)
@@ -370,115 +593,25 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
         await query.answer("An error occurred while checking payment status.")
 
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check if user is admin
-    admin_ids = [123456789]  # Replace with actual admin IDs
-    if update.effective_user.id not in admin_ids:
-        await update.message.reply_text("⛔️ Access denied: Admin only command")
-        return
-
-    # Admin command options
-    keyboard = [
-        [InlineKeyboardButton("View All Users", callback_data="admin_users")],
-        [InlineKeyboardButton("View All Subscriptions", callback_data="admin_subs")],
-        [InlineKeyboardButton("View All Orders", callback_data="admin_orders")],
-        [InlineKeyboardButton("Generate Channel Stats", callback_data="admin_stats")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "👑 Admin Control Panel\n\n"
-        "Select an option:",
-        reply_markup=reply_markup
-    )
-
-async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    # Verify admin
-    if query.from_user.id not in [123456789]:  # Replace with actual admin IDs
-        await query.answer("⛔️ Access denied")
-        return
-        
-    with app.app_context():
-        users = User.query.all()
-        message = "📊 Users Report\n\n"
-        for user in users:
-            message += f"ID: {user.telegram_id}\n"
-            message += f"Username: {user.username or 'N/A'}\n"
-            message += f"Joined: {user.created_at.strftime('%Y-%m-%d')}\n\n"
-        
-        await query.message.reply_text(message)
-
-async def admin_subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query.from_user.id not in [123456789]:
-        await query.answer("⛔️ Access denied")
-        return
-        
-    with app.app_context():
-        subs = Subscription.query.filter_by(active=True).all()
-        message = "📊 Active Subscriptions\n\n"
-        for sub in subs:
-            user = User.query.get(sub.user_id)
-            message += f"User: {user.username or user.telegram_id}\n"
-            message += f"Plan: {sub.plan_id}\n"
-            message += f"Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
-            
-        await query.message.reply_text(message)
-
-async def admin_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query.from_user.id not in [123456789]:
-        await query.answer("⛔️ Access denied")
-        return
-        
-    with app.app_context():
-        payments = Payment.query.order_by(Payment.created_at.desc()).limit(10).all()
-        message = "📊 Recent Orders\n\n"
-        for payment in payments:
-            user = User.query.get(payment.user_id)
-            message += f"Order ID: {payment.order_id}\n"
-            message += f"User: {user.username or user.telegram_id}\n"
-            message += f"Amount: ₹{payment.amount}\n"
-            message += f"Status: {payment.status}\n"
-            message += f"Date: {payment.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
-            
-        await query.message.reply_text(message)
-
-async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query.from_user.id not in [123456789]:
-        await query.answer("⛔️ Access denied")
-        return
-        
-    with app.app_context():
-        total_users = User.query.count()
-        active_subs = Subscription.query.filter_by(active=True).count()
-        total_revenue = db.session.query(db.func.sum(Payment.amount)).filter_by(status='SUCCESS').scalar() or 0
-        
-        message = "📊 Channel Statistics\n\n"
-        message += f"Total Users: {total_users}\n"
-        message += f"Active Subscriptions: {active_subs}\n"
-        message += f"Total Revenue: ₹{total_revenue:,.2f}\n"
-        
-        await query.message.reply_text(message)
-
+# Admin commands are updated to use /stats, /list_users, /revoke_sub, /grant_sub, /make_admin, and /remove_admin
 def setup_bot():
-    """Initialize and configure the bot with all handlers"""
+    """Initialize and configure the bot with handlers"""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # Add command handlers
+    # Basic commands
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("admin", admin))
     
-    # Add callback query handlers
+    # Admin commands
+    application.add_handler(CommandHandler("stats", admin_stats))
+    application.add_handler(CommandHandler("list_users", admin_list_users))
+    application.add_handler(CommandHandler("revoke_sub", admin_revoke_sub))
+    application.add_handler(CommandHandler("grant_sub", admin_grant_sub))
+    application.add_handler(CommandHandler("make_admin", admin_make_admin))
+    application.add_handler(CommandHandler("remove_admin", admin_remove_admin))
+    
+    # Callback queries
     application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
     application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^subscribe_"))
     application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_status_"))
-    
-    # Add admin callback handlers
-    application.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
-    application.add_handler(CallbackQueryHandler(admin_subs, pattern="^admin_subs$"))
-    application.add_handler(CallbackQueryHandler(admin_orders, pattern="^admin_orders$"))
-    application.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
-    
+
     return application

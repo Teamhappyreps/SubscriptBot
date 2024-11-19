@@ -5,6 +5,8 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     telegram_id = db.Column(db.BigInteger, unique=True, nullable=False)
     username = db.Column(db.String(64))
+    is_admin = db.Column(db.Boolean, default=False)
+    is_super_admin = db.Column(db.Boolean, default=False)
     subscriptions = db.relationship('Subscription', backref='user', lazy=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
