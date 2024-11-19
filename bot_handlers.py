@@ -357,48 +357,75 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        keyboard = []
-        plans_message = "Available Subscription Plans:\n\n"
-        
-        logger.info("Starting to generate subscription plan buttons")
-        for plan_id, plan in SUBSCRIPTION_PLANS.items():
-            # Validate plan data
-            if not all(key in plan for key in ['name', 'price', 'duration_days']):
-                logger.error(f"Invalid plan data for {plan_id}: missing required fields")
-                continue
-                
-            # Calculate number of channels
-            channels = plan.get('channels', [plan.get('channel_id')])
-            num_channels = len(channels) if isinstance(channels, list) else 1
-            
-            plan_info = (
-                f"📦 {plan['name']}\n"
-                f"💰 Price: ₹{plan['price']}\n"
-                f"⏳ Duration: {plan['duration_days']} days\n"
-                f"📺 Channels: {num_channels} Premium Channel{'s' if num_channels > 1 else ''}\n\n"
-            )
-            plans_message += plan_info
-            
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{plan['name']} - ₹{plan['price']} ({plan['duration_days']} days)",
-                    callback_data=f"subscribe_{plan_id}"
-                )
-            ])
-            
-        keyboard.append([InlineKeyboardButton("Back", callback_data="start")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.callback_query.edit_message_text(
-            plans_message + "\nChoose a plan to subscribe:",
-            reply_markup=reply_markup
+    keyboard = []
+    plans_message = "Available Subscription Plans:\n\n"
+    
+    for plan_id, plan in SUBSCRIPTION_PLANS.items():
+        plan_info = (
+            f"📦 {plan['name']}\n"
+            f"💰 Price: ₹{plan['price']}\n"
+            f"⏳ Duration: {plan['duration_days']} days\n"
+            f"📺 Channels: {len(plan.get('channels', [plan.get('channel_id', 'Unknown')]))} Premium Channel{'s' if len(plan.get('channels', [plan.get('channel_id', 'Unknown')])) > 1 else ''}\n\n"
         )
-        logger.info("Successfully displayed all subscription plans")
+        plans_message += plan_info
+        keyboard.append([InlineKeyboardButton(plan['name'], callback_data=f"select_plan_{plan_id}")])
+    
+    # Add back button
+    keyboard.append([InlineKeyboardButton("« Back to Menu", callback_data="back_to_menu")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.message.edit_text(plans_message, reply_markup=reply_markup)
+
+async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("View Subscription Plans", callback_data="show_plans")],
+        [InlineKeyboardButton("My Subscriptions", callback_data="my_subs")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.message.edit_text(
+        "🎉 Welcome to Premium Services!\n\n"
+        "Choose an option below to get started:\n"
+        "• View our subscription plans\n"
+        "• Check your active subscriptions\n\n"
+        "❓ Need help? Contact @happy69now",
+        reply_markup=reply_markup
+    )
+
+async def my_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=user_id).first()
+        if not user:
+            await query.message.edit_text("❌ User not found.")
+            return
+            
+        active_subs = Subscription.query.filter_by(
+            user_id=user.id,
+            active=True
+        ).all()
         
-    except Exception as e:
-        logger.error(f"Error in show_plans: {str(e)}", exc_info=True)
-        await update.callback_query.answer("Error displaying plans. Please try again.")
+        if not active_subs:
+            keyboard = [[InlineKeyboardButton("« Back to Menu", callback_data="back_to_menu")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(
+                "You don't have any active subscriptions.\n"
+                "Use /start to view available plans.",
+                reply_markup=reply_markup
+            )
+            return
+            
+        subs_message = "Your Active Subscriptions:\n\n"
+        for sub in active_subs:
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id)
+            if plan:
+                subs_message += f"📦 Plan: {plan['name']}\n"
+                subs_message += f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+        
+        keyboard = [[InlineKeyboardButton("« Back to Menu", callback_data="back_to_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(subs_message, reply_markup=reply_markup)
 
 async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -413,12 +440,12 @@ async def handle_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"Received callback data: {query.data}")
         
         # Validate callback data format and extract plan_id
-        if not query.data.startswith("subscribe_"):
+        if not query.data.startswith("select_plan_"):
             logger.error(f"Invalid callback data format: {query.data}")
             await query.answer("Invalid selection format. Please try again.")
             return
             
-        plan_id = query.data[len("subscribe_"):]  # Remove "subscribe_" prefix
+        plan_id = query.data[len("select_plan_"):]  # Remove "subscribe_" prefix
         logger.info(f"Extracted plan_id: {plan_id}")
         
         # Validate plan_id against SUBSCRIPTION_PLANS
@@ -610,8 +637,10 @@ def setup_bot():
     application.add_handler(CommandHandler("remove_admin", admin_remove_admin))
     
     # Callback queries
+    application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
-    application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^subscribe_"))
+    application.add_handler(CallbackQueryHandler(my_subscriptions, pattern="^my_subs$"))
+    application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^select_plan_"))
     application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_status_"))
 
     return application
