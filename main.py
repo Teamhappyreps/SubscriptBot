@@ -10,12 +10,23 @@ from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from datetime import datetime
 import asyncio
 import threading
+import logging
 from sqlalchemy import exc
+
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
 bot = ExtBot(token=TELEGRAM_BOT_TOKEN)
 payment_manager = PaymentManager()
+
+# Global flag for bot instance tracking
+_bot_running = False
 
 @app.route('/')
 def index():
@@ -116,12 +127,20 @@ def run_flask():
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 def run_bot():
+    global _bot_running
     try:
+        if _bot_running:
+            logger.warning("Bot instance already running")
+            return
+        _bot_running = True
         bot_app = setup_bot()
         bot_app.run_polling(drop_pending_updates=True, allowed_updates=['message', 'callback_query'])
     except Exception as e:
         logger.error(f"Error in bot polling: {e}")
+        _bot_running = False
         raise
+    finally:
+        _bot_running = False
 
 if __name__ == '__main__':
     try:
@@ -129,7 +148,7 @@ if __name__ == '__main__':
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
         
-        # Run the bot in the main thread
+        # Run the bot in the main thread with instance check
         run_bot()
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
