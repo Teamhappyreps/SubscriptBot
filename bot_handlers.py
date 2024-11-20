@@ -407,17 +407,30 @@ async def admin_manual_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         try:
-            # Command format: /manual_sub user_telegram_id plan_id duration_days
+            # Command format: /manual_sub user_id plan_id duration_days
             if len(context.args) < 3:
                 plans_info = "\nAvailable plans:\n" + "\n".join([f"- {plan_id}" for plan_id in SUBSCRIPTION_PLANS.keys()])
                 await update.message.reply_text(
-                    "Usage: /manual_sub <user_telegram_id> <plan_id> <duration_days>" + plans_info
+                    "Usage: /manual_sub <user_id> <plan_id> <duration_days>" + plans_info
                 )
                 return
 
-            target_telegram_id = int(context.args[0])
+            # Validate user ID format
+            try:
+                user_id = int(context.args[0])
+                if user_id <= 0:
+                    await update.message.reply_text("❌ User ID must be a positive number.")
+                    return
+            except ValueError:
+                await update.message.reply_text("❌ User ID must be a number.")
+                return
+
             plan_id = context.args[1]
-            duration_days = int(context.args[2])
+            try:
+                duration_days = int(context.args[2])
+            except ValueError:
+                await update.message.reply_text("❌ Duration must be a number.")
+                return
 
             if duration_days <= 0:
                 await update.message.reply_text("❌ Duration must be greater than 0 days.")
@@ -430,9 +443,9 @@ async def admin_manual_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
 
-            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            target_user = User.query.get(user_id)
             if not target_user:
-                await update.message.reply_text("❌ User not found.")
+                await update.message.reply_text(f"❌ User with ID {user_id} not found.")
                 return
 
             # Check for existing active subscription
@@ -465,16 +478,14 @@ async def admin_manual_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plan = SUBSCRIPTION_PLANS[plan_id]
             channels = plan.get('channels', [plan.get('channel_id')])
             for channel in channels:
-                await generate_channel_invite(channel, target_telegram_id, f"manual_sub_{datetime.utcnow().timestamp()}")
+                await generate_channel_invite(channel, target_user.telegram_id, f"manual_sub_{datetime.utcnow().timestamp()}")
 
             await update.message.reply_text(
-                f"✅ Successfully {action} {plan['name']} subscription for user {target_telegram_id}\n"
+                f"✅ Successfully {action} {plan['name']} subscription for user ID {user_id}\n"
                 f"Duration: {duration_days} days\n"
                 f"End Date: {end_date.strftime('%Y-%m-%d %H:%M:%S')}"
             )
 
-        except ValueError as e:
-            await update.message.reply_text("❌ Invalid number format.")
         except Exception as e:
             logger.error(f"Error in admin_manual_sub: {str(e)}")
             await update.message.reply_text("❌ An error occurred while managing the subscription.")
