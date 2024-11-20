@@ -376,6 +376,189 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.message.edit_text(plans_message, reply_markup=reply_markup)
 
+
+def setup_bot():
+    """Initialize bot with all necessary handlers"""
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    # Add handlers
+    application.add_handler(CommandHandler("start", start))
+    
+    # Admin commands
+    application.add_handler(CommandHandler("stats", admin_stats))
+    application.add_handler(CommandHandler("list_users", admin_list_users))
+    application.add_handler(CommandHandler("revoke_sub", admin_revoke_sub))
+    application.add_handler(CommandHandler("grant_sub", admin_grant_sub))
+    application.add_handler(CommandHandler("make_admin", admin_make_admin))
+    application.add_handler(CommandHandler("remove_admin", admin_remove_admin))
+    application.add_handler(CommandHandler("manual_sub", admin_manual_sub))  # New manual subscription command
+    
+    # Callback query handlers
+    application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
+    application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
+
+    return application
+async def admin_manual_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manually add a subscription with custom duration and plan"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            # Command format: /manual_sub user_telegram_id plan_id duration_days
+            if len(context.args) < 3:
+                plans_info = "\nAvailable plans:\n" + "\n".join([f"- {plan_id}" for plan_id in SUBSCRIPTION_PLANS.keys()])
+                await update.message.reply_text(
+                    "Usage: /manual_sub <user_telegram_id> <plan_id> <duration_days>" + plans_info
+                )
+                return
+
+            target_telegram_id = int(context.args[0])
+            plan_id = context.args[1]
+            duration_days = int(context.args[2])
+
+            if duration_days <= 0:
+                await update.message.reply_text("❌ Duration must be greater than 0 days.")
+                return
+
+            if plan_id not in SUBSCRIPTION_PLANS:
+                await update.message.reply_text(
+                    f"❌ Invalid plan ID. Available plans:\n" + 
+                    "\n".join([f"- {plan_id}" for plan_id in SUBSCRIPTION_PLANS.keys()])
+                )
+                return
+
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            # Check for existing active subscription
+            active_sub = Subscription.query.filter_by(
+                user_id=target_user.id,
+                plan_id=plan_id,
+                active=True
+            ).first()
+
+            end_date = datetime.utcnow() + timedelta(days=duration_days)
+
+            if active_sub:
+                # Extend existing subscription
+                active_sub.end_date = end_date
+                db.session.commit()
+                action = "extended"
+            else:
+                # Create new subscription
+                subscription = Subscription(
+                    user_id=target_user.id,
+                    plan_id=plan_id,
+                    end_date=end_date,
+                    active=True
+                )
+                db.session.add(subscription)
+                db.session.commit()
+                action = "created"
+
+            # Generate invite links
+            plan = SUBSCRIPTION_PLANS[plan_id]
+            channels = plan.get('channels', [plan.get('channel_id')])
+            for channel in channels:
+                await generate_channel_invite(channel, target_telegram_id, f"manual_sub_{datetime.utcnow().timestamp()}")
+
+            await update.message.reply_text(
+                f"✅ Successfully {action} {plan['name']} subscription for user {target_telegram_id}\n"
+                f"Duration: {duration_days} days\n"
+                f"End Date: {end_date.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        except ValueError as e:
+            await update.message.reply_text("❌ Invalid number format.")
+        except Exception as e:
+            logger.error(f"Error in admin_manual_sub: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while managing the subscription.")
+async def admin_manual_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manually add a subscription with custom duration"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            # Command format: /manual_sub user_telegram_id plan_id duration_days
+            if len(context.args) < 3:
+                plans_info = "\nAvailable plans:\n" + "\n".join([f"- {plan_id}" for plan_id in SUBSCRIPTION_PLANS.keys()])
+                await update.message.reply_text(
+                    "Usage: /manual_sub <user_telegram_id> <plan_id> <duration_days>" + plans_info
+                )
+                return
+
+            target_telegram_id = int(context.args[0])
+            plan_id = context.args[1]
+            duration_days = int(context.args[2])
+
+            if duration_days <= 0:
+                await update.message.reply_text("❌ Duration must be greater than 0 days.")
+                return
+
+            if plan_id not in SUBSCRIPTION_PLANS:
+                await update.message.reply_text(
+                    f"❌ Invalid plan ID. Available plans:\n" + 
+                    "\n".join([f"- {plan_id}" for plan_id in SUBSCRIPTION_PLANS.keys()])
+                )
+                return
+
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            # Check for existing active subscription
+            active_sub = Subscription.query.filter_by(
+                user_id=target_user.id,
+                plan_id=plan_id,
+                active=True
+            ).first()
+
+            end_date = datetime.utcnow() + timedelta(days=duration_days)
+
+            if active_sub:
+                # Extend existing subscription
+                active_sub.end_date = end_date
+                db.session.commit()
+                action = "extended"
+            else:
+                # Create new subscription
+                subscription = Subscription(
+                    user_id=target_user.id,
+                    plan_id=plan_id,
+                    end_date=end_date,
+                    active=True
+                )
+                db.session.add(subscription)
+                db.session.commit()
+                action = "created"
+
+            # Generate invite links
+            plan = SUBSCRIPTION_PLANS[plan_id]
+            channels = plan.get('channels', [plan.get('channel_id')])
+            for channel in channels:
+                await generate_channel_invite(channel, target_telegram_id, f"manual_sub_{datetime.utcnow().timestamp()}")
+
+            await update.message.reply_text(
+                f"✅ Successfully {action} {plan['name']} subscription for user {target_telegram_id}\n"
+                f"Duration: {duration_days} days\n"
+                f"End Date: {end_date.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        except ValueError as e:
+            await update.message.reply_text("❌ Invalid number format.")
+        except Exception as e:
+            logger.error(f"Error in admin_manual_sub: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while managing the subscription.")
+
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("View Subscription Plans", callback_data="show_plans")],
