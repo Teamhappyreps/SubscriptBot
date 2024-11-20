@@ -4,14 +4,14 @@ from bot_handlers import setup_bot
 from models import Payment, User, Subscription
 from subscription_manager import SubscriptionManager
 from payment_manager import PaymentManager
-import telegram
+from telegram.ext import ExtBot as Bot
 from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from datetime import datetime
 import asyncio
 import threading
 from sqlalchemy import exc
 
-bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 payment_manager = PaymentManager()
 
 @app.route('/')
@@ -80,11 +80,11 @@ def payment_callback():
                                                 chat_id=user.telegram_id,
                                                 text=f"Join your channel here: {invite_link.invite_link}"
                                             )
-                                        except telegram.error.TelegramError as e:
+                                        except Exception as e:
                                             print(f"Error creating invite link for channel {channel}: {e}")
                                             continue
                                             
-                                except telegram.error.TelegramError as e:
+                                except Exception as e:
                                     print(f"Error sending confirmation: {e}")
                                     
                             # Run async operations

@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta
 from models import Subscription, User, db
 from config import SUBSCRIPTION_PLANS
-import telegram
+from telegram.ext import ExtBot as Bot
 from config import TELEGRAM_BOT_TOKEN
 import asyncio
 from sqlalchemy import exc
 from app import app
 
-bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 class SubscriptionManager:
     @staticmethod
@@ -55,7 +55,7 @@ class SubscriptionManager:
                 user_id=user_telegram_id
             )
             return True
-        except telegram.error.TelegramError as e:
+        except Exception as e:
             print(f"Error removing user from channel {channel}: {e}")
             return False
 
@@ -93,7 +93,7 @@ class SubscriptionManager:
                                         text=f"Your subscription to {plan['name']} has expired. "
                                              f"Please renew to continue accessing the content."
                                     )
-                                except telegram.error.TelegramError as e:
+                                except Exception as e:
                                     print(f"Error sending expiration notice: {e}")
                             
                             # Run async operations
@@ -150,7 +150,7 @@ class SubscriptionManager:
                                         chat_id=user.telegram_id,
                                         text=message
                                     )
-                                except telegram.error.TelegramError as e:
+                                except Exception as e:
                                     print(f"Error sending renewal reminder: {e}")
                             
                             # Run async operations

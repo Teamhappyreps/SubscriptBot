@@ -1,6 +1,6 @@
-import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import ExtBot as Bot
 from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from models import User, Payment, InviteLink, db, Subscription
 from payment_manager import PaymentManager
@@ -240,11 +240,11 @@ async def admin_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.error(f"Error in admin_remove_admin: {str(e)}")
             await update.message.reply_text("❌ An error occurred while removing admin privileges.")
 
-async def validate_channel_id(bot: telegram.Bot, channel_id: str) -> bool:
+async def validate_channel_id(bot: Bot, channel_id: str) -> bool:
     try:
         await bot.get_chat(channel_id)
         return True
-    except telegram.error.TelegramError as e:
+    except Exception as e:
         logger.error(f"Error validating channel {channel_id}: {str(e)}")
         return False
 
@@ -266,7 +266,7 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 logger.error(f"No active subscription found for user {user.id}")
                 return None
 
-            bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+            bot = Bot(token=TELEGRAM_BOT_TOKEN)
             
             # Validate channel ID before proceeding
             if not await validate_channel_id(bot, channel_id):
@@ -284,7 +284,7 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
             try:
                 chat = await bot.get_chat(channel_id)
                 channel_name = chat.title
-            except telegram.error.TelegramError as e:
+            except Exception as e:
                 logger.error(f"Error getting channel name for {channel_id}: {str(e)}")
                 channel_name = "Premium Channel"
 
@@ -325,7 +325,7 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
             
             return invite_link
 
-    except telegram.error.TelegramError as e:
+    except Exception as e:
         logger.error(f"Telegram API error while generating invite for channel {channel_id}: {str(e)}")
         return None
     except Exception as e:
