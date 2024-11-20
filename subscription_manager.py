@@ -1,13 +1,16 @@
 from datetime import datetime, timedelta
 from models import Subscription, User, db
 from config import SUBSCRIPTION_PLANS
-from telegram.ext import ExtBot as Bot
+from telegram.ext import ExtBot
+from telegram.error import TelegramError
 from config import TELEGRAM_BOT_TOKEN
 import asyncio
 from sqlalchemy import exc
 from app import app
 
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
+bot = ExtBot(token=TELEGRAM_BOT_TOKEN)
 
 class SubscriptionManager:
     @staticmethod

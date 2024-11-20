@@ -4,14 +4,17 @@ from bot_handlers import setup_bot
 from models import Payment, User, Subscription
 from subscription_manager import SubscriptionManager
 from payment_manager import PaymentManager
-from telegram.ext import ExtBot as Bot
+from telegram.ext import ExtBot
+from telegram.error import TelegramError
 from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from datetime import datetime
 import asyncio
 import threading
 from sqlalchemy import exc
 
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
+bot = ExtBot(token=TELEGRAM_BOT_TOKEN)
 payment_manager = PaymentManager()
 
 @app.route('/')

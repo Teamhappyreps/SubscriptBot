@@ -1,6 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram.ext import ExtBot as Bot
+from telegram.ext import ExtBot
+from telegram.error import TelegramError
 from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
 from models import User, Payment, InviteLink, db, Subscription
 from payment_manager import PaymentManager
@@ -240,7 +241,7 @@ async def admin_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.error(f"Error in admin_remove_admin: {str(e)}")
             await update.message.reply_text("❌ An error occurred while removing admin privileges.")
 
-async def validate_channel_id(bot: Bot, channel_id: str) -> bool:
+async def validate_channel_id(bot: ExtBot, channel_id: str) -> bool:
     try:
         await bot.get_chat(channel_id)
         return True
@@ -266,7 +267,9 @@ async def generate_channel_invite(channel_id, user_telegram_id, order_id):
                 logger.error(f"No active subscription found for user {user.id}")
                 return None
 
-            bot = Bot(token=TELEGRAM_BOT_TOKEN)
+            if not TELEGRAM_BOT_TOKEN:
+                raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
+            bot = ExtBot(token=TELEGRAM_BOT_TOKEN)
             
             # Validate channel ID before proceeding
             if not await validate_channel_id(bot, channel_id):
