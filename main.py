@@ -116,13 +116,23 @@ def run_flask():
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 def run_bot():
-    bot_app = setup_bot()
-    bot_app.run_polling(drop_pending_updates=True)
+    try:
+        bot_app = setup_bot()
+        bot_app.run_polling(drop_pending_updates=True, allowed_updates=['message', 'callback_query'])
+    except Exception as e:
+        logger.error(f"Error in bot polling: {e}")
+        raise
 
 if __name__ == '__main__':
-    # Start Flask in a separate thread
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Run the bot in the main thread
-    run_bot()
+    try:
+        # Start Flask in a separate thread
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        
+        # Run the bot in the main thread
+        run_bot()
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Critical error: {e}")
+        raise

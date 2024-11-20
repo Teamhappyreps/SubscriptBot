@@ -123,7 +123,23 @@ async def admin_grant_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Command format: /grant_sub user_telegram_id plan_id duration_days
             if len(context.args) < 3:
-                await update.message.reply_text("Usage: /grant_sub <user_telegram_id> <plan_id> <duration_days>")
+                plans_info = "Available Plans:\n"
+                for plan_id, plan in SUBSCRIPTION_PLANS.items():
+                    plans_info += f"• {plan_id}: {plan['name']} - ₹{plan['price']} for {plan['duration_days']} days\n"
+
+                help_message = (
+                    "📚 Grant Subscription Command Tutorial\n\n"
+                    "Format: /grant_sub <user_telegram_id> <plan_id> <duration_days>\n\n"
+                    "Parameters:\n"
+                    "• user_telegram_id: User's Telegram ID (numbers only)\n"
+                    "• plan_id: Plan identifier from the list below\n"
+                    "• duration_days: Number of days for subscription\n\n"
+                    f"{plans_info}\n"
+                    "Examples:\n"
+                    "/grant_sub 123456789 daily_desi_monthly 30\n"
+                    "/grant_sub 987654321 all_access_yearly 365"
+                )
+                await update.message.reply_text(help_message)
                 return
 
             target_telegram_id = int(context.args[0])
