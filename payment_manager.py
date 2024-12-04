@@ -46,38 +46,21 @@ class PaymentManager:
         
         # Update payment status in database
         payment = Payment.query.filter_by(order_id=order_id).first()
-        if payment and result.get('status') == 'SUCCESS':
-            try:
+        if payment:
+            if result.get('status') == 'SUCCESS':
                 payment.status = 'SUCCESS'
-                
-                # Process creator revenue share
-                user = User.query.get(payment.user_id)
-                if user:
-                    # Find the plan based on payment amount
-                    for plan_id, plan in SUBSCRIPTION_PLANS.items():
-                        if plan['price'] == payment.amount:
-                            # Check if channel has a creator
-                            channels = plan.get('channels', [plan.get('channel_id')])
-                            
-                            # Find creators for the channels
-                            creators = User.query.filter(
-                                User.is_creator == True,
-                                User.creator_channels.contains(channels)
-                            ).all()
-                            
-                            if creators:
-                                # Split revenue among creators
-                                creator_count = len(creators)
-                                for creator in creators:
-                                    creator_share = (payment.amount * (creator.revenue_share / 100)) / creator_count
-                                    payment.creator_share = creator_share
-                            
-                            SubscriptionManager.create_subscription(user.id, plan_id)
-                            break
-                
                 db.session.commit()
-            except Exception as e:
-                logger.error(f"Error processing payment and subscription: {e}")
-                db.session.rollback()
                 
+                # Create subscription if payment successful
+                try:
+                    user = User.query.get(payment.user_id)
+                    if user:
+                        # Find the plan based on payment amount
+                        for plan_id, plan in SUBSCRIPTION_PLANS.items():
+                            if plan['price'] == payment.amount:
+                                SubscriptionManager.create_subscription(user.id, plan_id)
+                                break
+                except Exception as e:
+                    logger.error(f"Error creating subscription after payment: {e}")
+                    
         return result

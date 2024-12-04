@@ -26,29 +26,11 @@ SUBSCRIPTION_PLANS = {
         'duration_days': 30,
         'channel_id': '-1002294971726'
     },
-    'tamil_tango_yearly': {
-        'name': 'Tamil Tango Yearly',
-        'price': 699,
-        'duration_days': 365,
-        'channel_id': '-1002294971726'
-    },
-    'models_monthly': {
-        'name': 'Model collection Monthly',
-        'price': 299,
-        'duration_days': 30,
-        'channel_id': '-1002444202487'
-    },
-    'models_yearly': {
-        'name': 'Model collection Yearly',
-        'price': 699,
-        'duration_days': 365,
-        'channel_id': '-1002444202487'
-    },
     'all_access_yearly': {
         'name': 'All Access Bundle Yearly',
         'price': 1499,
         'duration_days': 365,
-        'channels': ['-1002280414979', '-1002294971726', '-1002444202487']
+        'channels': ['-1002280414979', '-1002294971726']
     }
 }
 
