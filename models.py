@@ -7,6 +7,9 @@ class User(db.Model):
     username = db.Column(db.String(64))
     is_admin = db.Column(db.Boolean, default=False)
     is_super_admin = db.Column(db.Boolean, default=False)
+    is_creator = db.Column(db.Boolean, default=False)
+    creator_channels = db.Column(db.JSON, default=list)  # List of channel IDs owned by creator
+    revenue_share = db.Column(db.Float, default=70.0)  # Default 70% revenue share
     subscriptions = db.relationship('Subscription', backref='user', lazy=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -26,6 +29,7 @@ class Payment(db.Model):
     amount = db.Column(db.Float, nullable=False)
     status = db.Column(db.String(20), nullable=False)
     subscription_id = db.Column(db.Integer, db.ForeignKey('subscription.id'))
+    creator_share = db.Column(db.Float)  # Creator's revenue share amount
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class InviteLink(db.Model):

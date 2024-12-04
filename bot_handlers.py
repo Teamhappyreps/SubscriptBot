@@ -713,6 +713,166 @@ async def broadcast_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✗ Failed: {failed}"
         )
 
+async def make_creator(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Make a user a creator (admin/super admin only)"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            if len(context.args) < 2:
+                await update.message.reply_text(
+                    "Usage: /make_creator <user_telegram_id> <channel_id>\n"
+                    "Example: /make_creator 123456789 -1001234567890"
+                )
+                return
+
+            target_telegram_id = int(context.args[0])
+            channel_id = context.args[1]
+
+            # Validate channel ID
+            try:
+                chat = await context.bot.get_chat(channel_id)
+                if chat.type not in ['channel', 'supergroup']:
+                    await update.message.reply_text("❌ Invalid channel ID. Please provide a valid channel ID.")
+                    return
+            except Exception as e:
+                await update.message.reply_text(
+                    "❌ Could not validate channel. Make sure:\n"
+                    "1. The channel ID is correct\n"
+                    "2. The bot is an admin in the channel"
+                )
+                return
+
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            if target_user.is_creator:
+                current_channels = target_user.creator_channels or []
+                if channel_id in current_channels:
+                    await update.message.reply_text("⚠️ User is already a creator for this channel.")
+                    return
+                current_channels.append(channel_id)
+                target_user.creator_channels = current_channels
+            else:
+                target_user.is_creator = True
+                target_user.creator_channels = [channel_id]
+                target_user.revenue_share = 70.0  # Default 70% revenue share
+
+            db.session.commit()
+
+            await update.message.reply_text(
+                f"✅ Successfully made user {target_telegram_id} a creator for channel {channel_id}\n"
+                f"Revenue share: {target_user.revenue_share}%"
+            )
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid user ID format.")
+        except Exception as e:
+            logger.error(f"Error in make_creator: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while setting up creator.")
+
+async def remove_creator(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove creator status from a user (admin/super admin only)"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            if len(context.args) < 2:
+                await update.message.reply_text(
+                    "Usage: /remove_creator <user_telegram_id> <channel_id>\n"
+                    "Example: /remove_creator 123456789 -1001234567890"
+                )
+                return
+
+            target_telegram_id = int(context.args[0])
+            channel_id = context.args[1]
+
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            if not target_user.is_creator:
+                await update.message.reply_text("⚠️ User is not a creator.")
+                return
+
+            current_channels = target_user.creator_channels or []
+            if channel_id not in current_channels:
+                await update.message.reply_text("⚠️ User is not a creator for this channel.")
+                return
+
+            current_channels.remove(channel_id)
+            target_user.creator_channels = current_channels
+
+            # If no more channels, remove creator status
+            if not current_channels:
+                target_user.is_creator = False
+                target_user.revenue_share = None
+
+            db.session.commit()
+
+            await update.message.reply_text(
+                f"✅ Successfully removed creator status for channel {channel_id} from user {target_telegram_id}"
+            )
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid user ID format.")
+        except Exception as e:
+            logger.error(f"Error in remove_creator: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while removing creator status.")
+
+async def set_revenue_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set revenue share percentage for a creator (admin/super admin only)"""
+    with app.app_context():
+        admin = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not admin or not (admin.is_admin or admin.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        try:
+            if len(context.args) < 2:
+                await update.message.reply_text(
+                    "Usage: /set_revenue_share <user_telegram_id> <percentage>\n"
+                    "Example: /set_revenue_share 123456789 75"
+                )
+                return
+
+            target_telegram_id = int(context.args[0])
+            percentage = float(context.args[1])
+
+            if not (0 <= percentage <= 100):
+                await update.message.reply_text("❌ Percentage must be between 0 and 100.")
+                return
+
+            target_user = User.query.filter_by(telegram_id=target_telegram_id).first()
+            if not target_user:
+                await update.message.reply_text("❌ User not found.")
+                return
+
+            if not target_user.is_creator:
+                await update.message.reply_text("⚠️ User is not a creator.")
+                return
+
+            target_user.revenue_share = percentage
+            db.session.commit()
+
+            await update.message.reply_text(
+                f"✅ Successfully set revenue share to {percentage}% for creator {target_telegram_id}"
+            )
+
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number format.")
+        except Exception as e:
+            logger.error(f"Error in set_revenue_share: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while setting revenue share.")
 def setup_bot():
     """Initialize and configure the bot with handlers"""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -730,9 +890,95 @@ def setup_bot():
     application.add_handler(CommandHandler("broadcast_all", broadcast_all))
     application.add_handler(CommandHandler("broadcast_active", broadcast_active))
     
+    # Creator management commands
+    application.add_handler(CommandHandler("make_creator", make_creator))
+    application.add_handler(CommandHandler("remove_creator", remove_creator))
+    application.add_handler(CommandHandler("set_revenue_share", set_revenue_share))
+    
     # Callback queries
     application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     application.add_handler(CallbackQueryHandler(show_plans, pattern="^show_plans$"))
+async def creator_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View creator statistics and earnings"""
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not user.is_creator:
+            await update.message.reply_text("⚠️ This command is only available for creators.")
+            return
+
+        try:
+            # Get all successful payments for creator's channels
+            total_earnings = 0
+            channel_stats = {}
+            
+            # Initialize stats for each channel
+            for channel_id in (user.creator_channels or []):
+                channel_stats[channel_id] = {
+                    'total_subscribers': 0,
+                    'active_subscribers': 0,
+                    'revenue': 0
+                }
+            
+            # Calculate statistics
+            for channel_id in user.creator_channels:
+                # Get all plans that include this channel
+                relevant_plans = [
+                    plan_id for plan_id, plan in SUBSCRIPTION_PLANS.items()
+                    if channel_id in plan.get('channels', [plan.get('channel_id')])
+                ]
+                
+                # Get subscriptions for these plans
+                subscriptions = Subscription.query.filter(
+                    Subscription.plan_id.in_(relevant_plans)
+                ).all()
+                
+                channel_stats[channel_id]['total_subscribers'] = len(subscriptions)
+                channel_stats[channel_id]['active_subscribers'] = len(
+                    [sub for sub in subscriptions if sub.active]
+                )
+                
+                # Calculate revenue from payments
+                payments = Payment.query.filter(
+                    Payment.status == 'SUCCESS',
+                    Payment.creator_share.isnot(None)
+                ).all()
+                
+                channel_revenue = sum(
+                    payment.creator_share
+                    for payment in payments
+                    if any(plan['channel_id'] == channel_id for plan in SUBSCRIPTION_PLANS.values())
+                )
+                
+                channel_stats[channel_id]['revenue'] = channel_revenue
+                total_earnings += channel_revenue
+            
+            # Create statistics message
+            stats_message = f"📊 Creator Statistics\n\n"
+            stats_message += f"💰 Total Earnings: ₹{total_earnings:.2f}\n"
+            stats_message += f"📈 Revenue Share: {user.revenue_share}%\n\n"
+            
+            for channel_id, stats in channel_stats.items():
+                try:
+                    chat = await context.bot.get_chat(channel_id)
+                    channel_name = chat.title
+                    stats_message += (
+                        f"📺 Channel: {channel_name}\n"
+                        f"👥 Total Subscribers: {stats['total_subscribers']}\n"
+                        f"✅ Active Subscribers: {stats['active_subscribers']}\n"
+                        f"💸 Channel Revenue: ₹{stats['revenue']:.2f}\n\n"
+                    )
+                except Exception as e:
+                    logger.error(f"Error getting channel info: {e}")
+                    continue
+            
+            await update.message.reply_text(stats_message)
+            
+        except Exception as e:
+            logger.error(f"Error in creator_stats: {str(e)}")
+            await update.message.reply_text("❌ An error occurred while fetching creator statistics.")
+
+# Add the new command handler to setup_bot()
+application.add_handler(CommandHandler("stats", creator_stats))
     application.add_handler(CallbackQueryHandler(my_subscriptions, pattern="^my_subs$"))
     application.add_handler(CallbackQueryHandler(handle_subscription, pattern="^select_plan_"))
     application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_status_"))
