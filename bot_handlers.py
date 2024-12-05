@@ -1,4 +1,18 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from app import app, db
+from models import User, Subscription
+from config import TELEGRAM_BOT_TOKEN, SUBSCRIPTION_PLANS
+from datetime import datetime
+import logging
+
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.ext import ExtBot
 from telegram.error import TelegramError
@@ -713,6 +727,47 @@ async def broadcast_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✗ Failed: {failed}"
         )
 
+async def list_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List all active subscribers with their subscription details"""
+    with app.app_context():
+        # Verify admin privileges
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+
+        # Get all active subscriptions with user details
+        active_subs = (
+            db.session.query(Subscription, User)
+            .join(User)
+            .filter(Subscription.active == True)
+            .order_by(Subscription.end_date)
+            .all()
+        )
+
+        if not active_subs:
+            await update.message.reply_text("📊 No active subscriptions found.")
+            return
+
+        # Format the message
+        message = "📊 Active Subscribers List:\n\n"
+        for sub, user in active_subs:
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id, {})
+            plan_name = plan.get('name', 'Unknown Plan')
+            message += (
+                f"👤 User: {user.username or 'No username'} (ID: {user.telegram_id})\n"
+                f"📦 Plan: {plan_name}\n"
+                f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+            )
+
+        # Split message if too long
+        if len(message) > 4096:
+            chunks = [message[i:i+4096] for i in range(0, len(message), 4096)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(message)
+
 def setup_bot():
     """Initialize and configure the bot with handlers"""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -723,6 +778,7 @@ def setup_bot():
     # Admin commands
     application.add_handler(CommandHandler("stats", admin_stats))
     application.add_handler(CommandHandler("list_users", admin_list_users))
+    application.add_handler(CommandHandler("list_active", list_active))
     application.add_handler(CommandHandler("revoke_sub", admin_revoke_sub))
     application.add_handler(CommandHandler("grant_sub", admin_grant_sub))
     application.add_handler(CommandHandler("make_admin", admin_make_admin))
