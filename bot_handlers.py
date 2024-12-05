@@ -34,23 +34,53 @@ logger = logging.getLogger(__name__)
 
 # Admin command handlers
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show admin statistics about users and subscriptions"""
+    """Show detailed subscription statistics grouped by plan"""
     with app.app_context():
         user = User.query.filter_by(telegram_id=update.effective_user.id).first()
         if not user or not (user.is_admin or user.is_super_admin):
             await update.message.reply_text("⚠️ You don't have permission to use this command.")
             return
-
-        total_users = User.query.count()
-        active_subs = Subscription.query.filter_by(active=True).count()
-        total_payments = Payment.query.filter_by(status='SUCCESS').count()
         
-        stats_message = (
-            "📊 System Statistics\n\n"
-            f"👥 Total Users: {total_users}\n"
-            f"✅ Active Subscriptions: {active_subs}\n"
-            f"💰 Successful Payments: {total_payments}\n"
-        )
+        stats_message = "📊 Subscription Statistics\n\n"
+        
+        # Per plan statistics
+        for plan_id, plan in SUBSCRIPTION_PLANS.items():
+            active_subs = Subscription.query.filter_by(
+                plan_id=plan_id,
+                active=True
+            ).count()
+            
+            total_revenue = db.session.query(db.func.sum(Payment.amount))\
+                .join(Subscription)\
+                .filter(
+                    Payment.status == 'SUCCESS',
+                    Subscription.plan_id == plan_id
+                ).scalar() or 0
+                
+            # Get expiring soon count
+            expiring_soon = Subscription.query.filter(
+                Subscription.plan_id == plan_id,
+                Subscription.active == True,
+                Subscription.end_date <= datetime.utcnow() + timedelta(days=7),
+                Subscription.end_date > datetime.utcnow()
+            ).count()
+            
+            stats_message += f"📦 {plan['name']}\n"
+            stats_message += f"• Active Subscribers: {active_subs}\n"
+            stats_message += f"• Revenue: ₹{total_revenue:,.2f}\n"
+            stats_message += f"• Expiring Soon: {expiring_soon}\n\n"
+        
+        # Overall statistics
+        total_users = User.query.count()
+        total_active = Subscription.query.filter_by(active=True).count()
+        total_revenue = db.session.query(db.func.sum(Payment.amount))\
+            .filter_by(status='SUCCESS').scalar() or 0
+            
+        stats_message += "📈 Overall Statistics\n"
+        stats_message += f"• Total Users: {total_users}\n"
+        stats_message += f"• Active Subscriptions: {total_active}\n"
+        stats_message += f"• Total Revenue: ₹{total_revenue:,.2f}"
+        
         await update.message.reply_text(stats_message)
 
 async def admin_list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -688,6 +718,38 @@ async def broadcast_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✓ Sent: {success}\n"
             f"✗ Failed: {failed}"
         )
+
+async def list_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    with app.app_context():
+        # Verify admin privileges
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+            
+        # Get all active subscriptions with user details
+        active_subs = Subscription.query.filter_by(active=True).all()
+        
+        if not active_subs:
+            await update.message.reply_text("No active subscriptions found.")
+            return
+            
+        message = "📊 Active Subscribers List\n\n"
+        
+        for sub in active_subs:
+            user = User.query.get(sub.user_id)
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id)
+            if user and plan:
+                message += f"👤 User: {user.username or user.telegram_id}\n"
+                message += f"📦 Plan: {plan['name']}\n"
+                message += f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+        
+        # Split message if too long
+        if len(message) > 4096:
+            for i in range(0, len(message), 4096):
+                await update.message.reply_text(message[i:i+4096])
+        else:
+            await update.message.reply_text(message)
 
 async def broadcast_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send broadcast message to users with active subscriptions"""
