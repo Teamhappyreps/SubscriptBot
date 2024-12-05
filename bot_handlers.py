@@ -767,6 +767,121 @@ async def list_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(chunk)
         else:
             await update.message.reply_text(message)
+            await update.message.reply_text("📊 No active subscriptions found.")
+            return
+
+        # Format the message
+        message = "📊 Active Subscribers List:\n\n"
+        for sub, user in active_subs:
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id, {})
+            plan_name = plan.get('name', 'Unknown Plan')
+            message += (
+                f"👤 User: {user.username or 'No username'} (ID: {user.telegram_id})\n"
+                f"📦 Plan: {plan_name}\n"
+                f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+            )
+
+        # Split message if too long
+        if len(message) > 4096:
+            chunks = [message[i:i+4096] for i in range(0, len(message), 4096)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(message)
+        if not active_subs:
+            await update.message.reply_text("📊 No active subscriptions found.")
+            return
+
+        # Format the message
+        message = "📊 Active Subscribers List:\n\n"
+        for sub, user in active_subs:
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id, {})
+            plan_name = plan.get('name', 'Unknown Plan')
+            message += (
+                f"👤 User: {user.username or 'No username'} (ID: {user.telegram_id})\n"
+                f"📦 Plan: {plan_name}\n"
+                f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+            )
+
+        # Split message if too long
+        if len(message) > 4096:
+            chunks = [message[i:i+4096] for i in range(0, len(message), 4096)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(message)
+
+async def broadcast_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    with app.app_context():
+        # Verify admin privileges
+        user = User.query.filter_by(telegram_id=update.effective_user.id).first()
+        if not user or not (user.is_admin or user.is_super_admin):
+            await update.message.reply_text("⚠️ You don't have permission to use this command.")
+            return
+            
+        # Command format: /broadcast_plan plan_id message
+        if len(context.args) < 2:
+            plans_list = "\n".join(f"• {plan_id}" for plan_id in SUBSCRIPTION_PLANS.keys())
+            await update.message.reply_text(
+                "Usage: /broadcast_plan <plan_id> <message>\n\n"
+                f"Available plans:\n{plans_list}"
+            )
+            return
+            
+        plan_id = context.args[0]
+        if plan_id not in SUBSCRIPTION_PLANS:
+            await update.message.reply_text("❌ Invalid plan ID")
+            return
+            
+        message = ' '.join(context.args[1:])
+        active_subs = Subscription.query.filter_by(
+            active=True,
+            plan_id=plan_id
+        ).all()
+        
+        user_ids = set(sub.user_id for sub in active_subs)
+        users = User.query.filter(User.id.in_(user_ids)).all()
+        
+        success = 0
+        failed = 0
+        
+        for user in users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=f"📢 Message for {SUBSCRIPTION_PLANS[plan_id]['name']} subscribers\n\n{message}"
+                )
+                success += 1
+            except Exception as e:
+                logger.error(f"Failed to send broadcast to {user.telegram_id}: {str(e)}")
+                failed += 1
+                
+        await update.message.reply_text(
+            f"✅ Broadcast to {SUBSCRIPTION_PLANS[plan_id]['name']} subscribers complete!\n"
+            f"✓ Sent: {success}\n"
+            f"✗ Failed: {failed}"
+        )
+            await update.message.reply_text("📊 No active subscriptions found.")
+            return
+
+        # Format the message
+        message = "📊 Active Subscribers List:\n\n"
+        for sub, user in active_subs:
+            plan = SUBSCRIPTION_PLANS.get(sub.plan_id, {})
+            plan_name = plan.get('name', 'Unknown Plan')
+            message += (
+                f"👤 User: {user.username or 'No username'} (ID: {user.telegram_id})\n"
+                f"📦 Plan: {plan_name}\n"
+                f"📅 Expires: {sub.end_date.strftime('%Y-%m-%d')}\n\n"
+            )
+
+        # Split message if too long
+        if len(message) > 4096:
+            chunks = [message[i:i+4096] for i in range(0, len(message), 4096)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(message)
 
 def setup_bot():
     """Initialize and configure the bot with handlers"""
@@ -785,6 +900,9 @@ def setup_bot():
     application.add_handler(CommandHandler("remove_admin", admin_remove_admin))
     application.add_handler(CommandHandler("broadcast_all", broadcast_all))
     application.add_handler(CommandHandler("broadcast_active", broadcast_active))
+    
+    # Admin broadcast commands
+    application.add_handler(CommandHandler("broadcast_plan", broadcast_plan))
     
     # Callback queries
     application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
